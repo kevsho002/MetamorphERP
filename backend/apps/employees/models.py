@@ -294,3 +294,48 @@ class ImportBatchRow(models.Model):
 
     def __str__(self) -> str:
         return f"Fila {self.row_number} · {self.get_status_display()}"
+
+
+class Bank(models.Model):
+    """Catálogo de bancos por país (Fase 7). Alimenta la lista desplegable de los campos de
+    plantilla con la regla ``"catalog": "BANK"`` (p. ej. «Banco para pago de planilla»).
+
+    El empleado guarda el CÓDIGO del banco (estable); el nombre puede corregirse aquí sin
+    tocar los expedientes. Los bancos no se borran: se desactivan.
+    """
+
+    country = models.ForeignKey(
+        Country,
+        on_delete=models.PROTECT,
+        db_column="country_id",
+        db_constraint=False,  # FK explícita en 0005 (core.catCountry es SQL-first)
+        related_name="banks",
+        verbose_name="país",
+    )
+    code = models.CharField(
+        "código",
+        max_length=20,
+        validators=[RegexValidator(r"^[A-Z0-9][A-Z0-9_]*$", "Use MAYÚSCULAS, dígitos y guion bajo.")],
+        help_text="Valor que se guarda en el expediente y se acepta en cargas masivas (también se acepta el nombre).",
+    )
+    name = models.CharField("nombre", max_length=150)
+    swift_code = models.CharField(
+        "código SWIFT/BIC",
+        max_length=11,
+        blank=True,
+        validators=[RegexValidator(r"^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$", "SWIFT/BIC de 8 u 11 caracteres.")],
+    )
+    display_order = models.PositiveSmallIntegerField("orden", default=100)
+    is_active = models.BooleanField("activo", default=True)
+    created_at = models.DateTimeField("creado", auto_now_add=True)
+    updated_at = models.DateTimeField("actualizado", auto_now=True)
+
+    class Meta:
+        db_table = "hcm_bank"
+        ordering = ["country_id", "display_order", "name"]
+        verbose_name = "banco"
+        verbose_name_plural = "bancos"
+        constraints = [models.UniqueConstraint(fields=["country", "code"], name="uq_hcm_bank_country_code")]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.code})"

@@ -4,7 +4,7 @@
  * La especificación llega del backend (GET /hcm/employee-templates/applicable/ -> form.fields):
  * cada campo trae key, label, kind (core|attribute), data_type, required, recommended,
  * default, pattern, example, patterns_by_type, choices, min, max, min_length,
- * max_length, transform y help. Aquí se agrupa en secciones, se valida en el
+ * max_length, transform, help y (Fase 7) mask, catalog y options ([{value, label, is_active}]). Aquí se agrupa en secciones, se valida en el
  * navegador (retroalimentación inmediata) y se arma el cuerpo para la API.
  * La validación definitiva SIEMPRE es la del servidor (mismas reglas + BD).
  */
@@ -52,9 +52,11 @@ export function patternFor(field, values) {
   if (field.patterns_by_type) {
     const type = String(values.national_id_type ?? "").toUpperCase();
     const rule = field.patterns_by_type[type];
-    return rule ? { pattern: rule.pattern, example: rule.example, message: rule.message } : null;
+    return rule ? { pattern: rule.pattern, example: rule.example, message: rule.message, mask: rule.mask } : null;
   }
-  return field.pattern ? { pattern: field.pattern, example: field.example, message: field.pattern_message } : null;
+  return field.pattern || field.mask
+    ? { pattern: field.pattern, example: field.example, message: field.pattern_message, mask: field.mask }
+    : null;
 }
 
 function ageAt(birth, on) {
@@ -95,13 +97,14 @@ export function validateField(field, rawValue, values, rules = {}) {
     if (field.max !== null && field.max !== undefined && n > Number(field.max)) return `El máximo es ${field.max}.`;
   }
   if (field.choices?.length && !field.choices.some((c) => c.toUpperCase() === value.toUpperCase())) {
+    if (field.catalog) return "Seleccione una opción del catálogo.";
     return `Seleccione una opción válida: ${field.choices.join(", ")}.`;
   }
   if (field.min_length && value.length < field.min_length) return `Debe tener al menos ${field.min_length} caracteres.`;
   if (field.max_length && value.length > field.max_length) return `Máximo ${field.max_length} caracteres.`;
 
   const rule = patternFor(field, values);
-  const re = rule && safeRegExp(rule.pattern);
+  const re = rule?.pattern && safeRegExp(rule.pattern);
   if (re && !re.test(value)) {
     const hint = rule.message ? ` (${rule.message})` : "";
     return rule.example ? `Formato inválido${hint}. Ejemplo válido: ${rule.example}.` : `Formato inválido${hint}.`;

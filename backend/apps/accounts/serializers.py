@@ -83,7 +83,7 @@ class _UserWriteMixin(serializers.Serializer):
         if employee is None:
             raise serializers.ValidationError("No existe un empleado con ese ID corporativo.")
         if employee.employment_status == Employee.Status.TERMINATED:
-            raise serializers.ValidationError("El empleado está retirado.")
+            raise serializers.ValidationError("El empleado está terminado.")
         linked = CustomUser.objects.filter(employee_id=value)
         if self.instance is not None:
             linked = linked.exclude(pk=self.instance.pk)

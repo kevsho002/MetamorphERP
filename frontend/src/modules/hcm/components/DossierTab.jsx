@@ -1,4 +1,5 @@
 import { formatDate, formatDateTime, formatMoney } from "../lib/format.js";
+import { formatWithMask } from "../lib/mask.js";
 
 const RESTRICTED = (
   <span className="restricted" title="Su rol no tiene acceso a este dato">
@@ -20,6 +21,8 @@ function displayValue(field, employee, catalogs) {
       return `${value}${employee.cost_center_name ? ` — ${employee.cost_center_name}` : ""}`;
     default:
   }
+  if (field.display) return field.display; // catálogos: nombre del banco en vez del código
+  if (field.mask) return formatWithMask(field.mask, value);
   if (field.data_type === "DATE") return formatDate(value);
   if (field.data_type === "BOOLEAN") return value === "true" || value === true ? "Sí" : "No";
   return String(value);

@@ -1,0 +1,171 @@
+/* Fase 8 — Horarios, tiempo por fecha de ocurrencia y cortes de nómina */
+.shift-editor {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.shift-grid input[type="time"],
+.shift-grid input[type="number"] {
+  width: 7.5rem;
+}
+.shift-grid__badge {
+  margin-left: 6px;
+}
+.shift-grid__row--error th,
+.shift-grid__row--error td {
+  background: var(--color-error-bg);
+}
+.shift-grid__error {
+  color: var(--color-error-fg);
+  font-size: 0.85rem;
+  min-width: 14rem;
+}
+.shift-days {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.shift-days__day {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 3.4rem;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.shift-days__day small {
+  font-weight: 400;
+  color: var(--color-muted);
+}
+.shift-days__day--rest {
+  opacity: 0.5;
+  font-weight: 400;
+}
+.shift-preview .section-title {
+  font-size: 1rem;
+}
+.week-view {
+  margin-top: var(--space-4);
+}
+.week-view__nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.week-view__records ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-3);
+}
+.text-error {
+  color: var(--color-error-fg);
+  font-weight: 600;
+}
+.row--current th,
+.row--current td {
+  background: var(--color-info-bg);
+}
+@media (max-width: 720px) {
+  .shift-grid input[type="time"],
+  .shift-grid input[type="number"] {
+    width: 100%;
+  }
+}
+/* Fase 9 — Acciones de personal */
+.signature-chain {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.signature-chain__step {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.signature-chain__step--next {
+  border-color: var(--color-accent);
+  background: var(--color-info-bg);
+}
+.signature-chain__step p {
+  margin: 4px 0 0;
+}
+.pre-wrap {
+  white-space: pre-wrap;
+}
+.form-section--full {
+  grid-column: 1 / -1;
+}
+/* Fase 10 — fechas de ocurrencia interactivas, bloques por día, ciclos por año */
+.occurrence-link {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.occurrence-link:hover,
+.occurrence-link:focus-visible {
+  color: var(--color-accent);
+}
+.shift-grid__tools {
+  white-space: nowrap;
+}
+.shift-grid__tools .link-button + .link-button {
+  margin-left: var(--space-2);
+}
+.sch-additional {
+  margin-top: var(--space-3);
+  border-left: 3px solid var(--color-warn-fg);
+  padding-left: var(--space-2);
+}
+.msg-list--warn {
+  color: var(--color-warn-fg);
+}
+.cycle-group + .cycle-group {
+  margin-top: var(--space-4);
+}
+.cycle-card > summary {
+  cursor: pointer;
+  list-style: revert;
+}
+.cycle-card__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cycle-card__title {
+  font-weight: 600;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cycle-month + .cycle-month {
+  border-top: 2px solid var(--color-border);
+}
+.cycle-month__label {
+  vertical-align: top;
+  white-space: nowrap;
+}
+.detail-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+}
+.detail-list dt {
+  color: var(--color-muted);
+  font-size: 0.85em;
+}
+.detail-list dd {
+  margin: 2px 0 0;
+}
+.day-records {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.2em;
+}

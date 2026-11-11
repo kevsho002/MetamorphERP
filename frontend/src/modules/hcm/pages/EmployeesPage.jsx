@@ -12,9 +12,9 @@ const DEFAULT_FILTERS = { search: "", country: "", status: "ACTIVE", cost_center
 const STATUS_FILTERS = [
   { value: "", label: "Todos los estados" },
   { value: "ACTIVE", label: "Activos" },
-  { value: "INACTIVE", label: "Inactivos (suspendidos y retirados)" },
-  { value: "SUSPENDED", label: "Suspendidos" },
-  { value: "TERMINATED", label: "Retirados" },
+  { value: "INACTIVE", label: "Inactivos" },
+  { value: "TERMINATED", label: "Terminados" },
+  { value: "NOT_ACTIVE", label: "Inactivos y terminados" },
 ];
 const SORTS = [
   { value: "employee_code", label: "ID corporativo" },

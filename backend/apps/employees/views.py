@@ -8,6 +8,7 @@ from urllib.parse import quote
 from django.db import IntegrityError
 from django.db.models import Prefetch, Q
 from django.http import FileResponse, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import mixins, status, viewsets
@@ -89,6 +90,8 @@ class EmployeeViewSet(
         "photo": Perm.HCM_VIEW,
         "upload_photo": Perm.HCM_MANAGE,
         "create_user_account": Perm.USERS_CREATE,
+        "link_user_account": Perm.USERS_UPDATE,
+        "user_account_candidates": Perm.USERS_UPDATE,
         "history": Perm.HCM_MANAGE,
     }
 
@@ -103,7 +106,7 @@ class EmployeeViewSet(
         if country := params.get("country"):
             qs = qs.filter(country__country_code__iexact=country)
         if status_ := params.get("status", "").strip().upper():
-            if status_ == "INACTIVE":  # suspendidos + retirados
+            if status_ == "NOT_ACTIVE":  # inactivos + terminados
                 qs = qs.exclude(employment_status=Employee.Status.ACTIVE)
             else:
                 qs = qs.filter(employment_status__in=[s.strip() for s in status_.split(",") if s.strip()])
@@ -124,13 +127,19 @@ class EmployeeViewSet(
 
     @staticmethod
     def _account_request(data: dict) -> dict | None:
-        """`user_account: {"create": true, "role": "EMPLOYEE", "username": ""}` (opcional en el alta)."""
+        """Cuenta Metamorph en el alta (opcional):
+
+        * crear una nueva:      `user_account: {"create": true, "role": "EMPLOYEE", "username": ""}`
+        * vincular una existente (Fase 7): `user_account: {"mode": "link", "user_id": 12}`
+        """
         raw = data.pop("user_account", None)
         if not isinstance(raw, dict):
             return None
+        if str(raw.get("mode", "")).strip().lower() == "link":
+            return {**raw, "mode": "link"}
         wants = raw.get("create")
         if wants in (True, 1) or str(wants).strip().lower() in {"true", "1", "si", "sí", "yes"}:
-            return raw
+            return {**raw, "mode": "create"}
         return None
 
     def _single(self, request, dry_run: bool):
@@ -142,6 +151,14 @@ class EmployeeViewSet(
 
         def account_checks(row):
             if account_request is None:
+                return
+            if account_request["mode"] == "link":
+                link = account_services.plan_link_existing(request.user, user_id=account_request.get("user_id"))
+                for field_name, message, code in link.errors:
+                    row.error(code, message, field_name)
+                for field_name, message, code in link.warnings:
+                    row.warn(code, message, field_name)
+                plan_holder["plan"] = link
                 return
             plan = account_services.plan_linked_account(
                 request.user,
@@ -182,7 +199,15 @@ class EmployeeViewSet(
             details={"country": employee.country.country_code, "template_id": outcome.row.template.pk, "via": "formulario"},
         )
         headers = None
-        if plan is not None:
+        if isinstance(plan, account_services.LinkPlan):
+            account = account_services.link_existing_account(request.user, employee, plan, request=request)
+            body["user_account"] = _account_summary(account)
+            body["feedback"] += (
+                f" La cuenta Metamorph existente «{account.username}» ({account.get_role_display()}) quedó vinculada al ID "
+                f"corporativo {employee.employee_code}; conserva su contraseña."
+            )
+            employee = self.get_queryset().get(pk=employee.pk)
+        elif plan is not None:
             try:
                 account, temporary = account_services.create_linked_account(request.user, employee, plan, request=request)
             except IntegrityError:  # carrera: alguien tomó el mismo usuario entre la validación y el alta
@@ -408,6 +433,33 @@ class EmployeeViewSet(
             headers=NO_STORE,
         )
 
+    @action(detail=True, methods=["get"], url_path="user-account/candidates")
+    def user_account_candidates(self, request, employee_code=None):
+        """Cuentas existentes SIN empleado que el usuario actual puede vincular (?search=)."""
+        # ?search= filtra CUENTAS: no se usa get_object() (aplicaría el filtro a los empleados).
+        get_object_or_404(Employee, employee_code=str(employee_code).upper())
+        return Response({"results": _link_candidates(request)}, headers=NO_STORE)
+
+    @action(detail=True, methods=["post"], url_path="user-account/link")
+    def link_user_account(self, request, employee_code=None):
+        """Vincula una cuenta Metamorph ya existente con este empleado: {user_id}."""
+        employee = self.get_object()
+        data = request.data if isinstance(request.data, dict) else {}
+        plan = account_services.plan_link_existing(request.user, user_id=data.get("user_id"), employee=employee)
+        if not plan.ok:
+            errors = [{"field": f, "message": m, "code": c} for f, m, c in plan.errors]
+            return Response({"detail": " ".join(e["message"] for e in errors), "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+        account = account_services.link_existing_account(request.user, employee, plan, request=request)
+        return Response(
+            {
+                "user_account": _account_summary(account),
+                "warnings": [{"field": f, "message": m, "code": c} for f, m, c in plan.warnings],
+                "feedback": f"La cuenta «{account.username}» ({account.get_role_display()}) quedó vinculada a "
+                            f"{employee.employee_code}. Conserva su contraseña y su rol.",
+            },
+            headers=NO_STORE,
+        )
+
     # ------------------------------------------------------------ historial (audit trail del empleado)
     @action(detail=True, methods=["get"])
     def history(self, request, employee_code=None):
@@ -525,8 +577,9 @@ class EmployeeTemplateViewSet(viewsets.ReadOnlyModelViewSet):
         """Archivo CSV de ejemplo (encabezados de la plantilla) para preparar una carga masiva."""
         template = self.get_object()
         spec = resolve_template(template)
-        headers = ["country"] + list(spec.fields)
-        example = {"country": spec.country_code}
+        # Fase 9: «schedule» = horario de la Primera AP de asignación de horario (obligatorio en el alta).
+        headers = ["country"] + list(spec.fields) + ["schedule"]
+        example = {"country": spec.country_code, "schedule": "L-V 08:00-17:00 60; S 08:00-12:00"}
         for key, field in spec.fields.items():
             example[key] = field.example or field.default or (field.choices[0] if field.choices else "")
         buffer = io.StringIO()
@@ -592,6 +645,33 @@ class ImportBatchViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
         code = status.HTTP_200_OK if batch.dry_run else status.HTTP_201_CREATED
         return Response(self._report(batch), status=code, headers=NO_STORE)
 
+
+
+def _link_candidates(request) -> list[dict]:
+    qs = account_services.link_candidates(request.user)
+    if search := request.query_params.get("search", "").strip():
+        qs = qs.filter(
+            Q(username__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search)
+            | Q(email__icontains=search)
+        )
+    return [
+        {
+            "id": u.pk, "username": u.username, "full_name": u.get_full_name() or None, "email": u.email or None,
+            "role": u.role, "role_label": u.get_role_display(), "is_active": u.is_active,
+        }
+        for u in qs[:25]
+    ]
+
+
+class AccountCandidatesView(APIView):
+    """GET /hcm/user-account-candidates/?search= — cuentas sin empleado (para el alta con «vincular existente»)."""
+
+    permission_classes = PERMISSIONS
+    action = "account_candidates"
+    action_permissions = {"account_candidates": Perm.USERS_UPDATE}
+
+    def get(self, request):
+        return Response({"results": _link_candidates(request)}, headers=NO_STORE)
 
 
 def _account_summary(account) -> dict:
@@ -669,7 +749,7 @@ class DigitalFileListView(APIView):
         if country := params.get("country"):
             qs = qs.filter(country__country_code__iexact=country)
         status_ = params.get("status", "ACTIVE").strip().upper()
-        if status_ == "INACTIVE":
+        if status_ == "NOT_ACTIVE":  # inactivos + terminados
             qs = qs.exclude(employment_status=Employee.Status.ACTIVE)
         elif status_ and status_ != "ALL":
             qs = qs.filter(employment_status=status_)

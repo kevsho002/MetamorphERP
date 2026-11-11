@@ -104,15 +104,17 @@ BEGIN
             @Seq      NVARCHAR(6),
             @Code     NVARCHAR(40);
 
+    -- Fase 7: EffectiveStartDate es la fecha de registro del país en el catálogo, no un límite para
+    -- ingresos anteriores (la vigencia del alta la decide la plantilla del país). Solo un país dado
+    -- de baja (EffectiveEndDate) bloquea ingresos posteriores a esa fecha.
     SELECT @Prefix = UPPER(LTRIM(RTRIM(c.IdPrefix)))
     FROM core.catCountry AS c
     WHERE c.CountryId = @CountryId
       AND c.IsActive = 1
-      AND c.EffectiveStartDate <= @EffectiveDate
       AND (c.EffectiveEndDate IS NULL OR c.EffectiveEndDate >= @EffectiveDate);
 
     IF @Prefix IS NULL
-        THROW 50001, N'País inexistente, inactivo o fuera de vigencia para la fecha de ingreso.', 1;
+        THROW 50001, N'País inexistente, inactivo o dado de baja antes de la fecha de ingreso.', 1;
 
     IF @@TRANCOUNT = 0
     BEGIN

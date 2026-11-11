@@ -115,18 +115,18 @@ def test_catalogs_filters_and_ordering(api, hr_user, wfm_user, employee_user):
     catalogs = api.get("/api/v1/hcm/catalogs/").json()
     assert {c["code"] for c in catalogs["countries"]} >= {"SV", "GT", "MX", "CO"}
     assert {"code": "GT-OPS", "country": "GT"}.items() <= next(c for c in catalogs["cost_centers"] if c["code"] == "GT-OPS").items()
-    assert [s["value"] for s in catalogs["employment_statuses"]] == ["ACTIVE", "SUSPENDED", "TERMINATED"]
+    assert [s["value"] for s in catalogs["employment_statuses"]] == ["ACTIVE", "INACTIVE", "TERMINATED"]
 
     page = api.get(EMPLOYEES, {"country": "GT"}).json()
     assert page["count"] == 1 and page["results"][0]["country"] == "GT" and "attributes" not in page["results"][0]
     assert api.get(EMPLOYEES, {"cost_center": "SV-OPS"}).json()["count"] == 1
     total = api.get(EMPLOYEES).json()["count"]
     gt = Employee.objects.get(country__country_code="GT")
-    gt.employment_status, gt.termination_date = Employee.Status.SUSPENDED, None
+    gt.employment_status, gt.termination_date = Employee.Status.INACTIVE, None
     gt.save(update_fields=["employment_status"])
     assert api.get(EMPLOYEES, {"status": "INACTIVE"}).json()["count"] == 1
     assert api.get(EMPLOYEES, {"status": "ACTIVE"}).json()["count"] == total - 1
-    assert api.get(EMPLOYEES, {"status": "suspended,terminated", "country": "gt"}).json()["count"] == 1
+    assert api.get(EMPLOYEES, {"status": "inactive,terminated", "country": "gt"}).json()["count"] == 1
     names = [e["full_name"] for e in api.get(EMPLOYEES, {"ordering": "-name", "page_size": 200}).json()["results"]]
     assert names.index("Carlos Pérez") < names.index("Ana López")
     assert len(api.get(EMPLOYEES, {"page_size": 1}).json()["results"]) == 1

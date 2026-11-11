@@ -54,4 +54,8 @@ export const employeesApi = {
 
   // ------------------------------------------------------------ cuenta Metamorph vinculada
   createUserAccount: (code, payload) => api.post(`/hcm/employees/${encodeURIComponent(code)}/user-account/`, payload),
+  /** Fase 7: cuentas existentes sin empleado (que el usuario actual puede administrar) y vínculo. */
+  accountCandidates: (search, options) => api.get(`/hcm/user-account-candidates/${toQuery({ search })}`, options),
+  linkUserAccount: (code, userId) =>
+    api.post(`/hcm/employees/${encodeURIComponent(code)}/user-account/link/`, { user_id: userId }),
 };

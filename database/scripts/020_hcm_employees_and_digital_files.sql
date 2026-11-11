@@ -53,7 +53,7 @@ BEGIN
         CONSTRAINT CK_Employee_EmployeeCode_Format
             CHECK (EmployeeCode LIKE N'%_-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-[0-9]'),
         CONSTRAINT CK_Employee_Gender           CHECK (Gender IN ('M', 'F', 'X')),
-        CONSTRAINT CK_Employee_EmploymentStatus CHECK (EmploymentStatus IN (N'ACTIVE', N'SUSPENDED', N'TERMINATED')),
+        CONSTRAINT CK_Employee_EmploymentStatus CHECK (EmploymentStatus IN (N'ACTIVE', N'INACTIVE', N'TERMINATED')),
         CONSTRAINT CK_Employee_PayFrequency     CHECK (PayFrequency IN (N'MONTHLY', N'BIWEEKLY', N'WEEKLY')),
         CONSTRAINT CK_Employee_BaseSalary       CHECK (BaseSalary >= 0),
         CONSTRAINT CK_Employee_Dates            CHECK (TerminationDate IS NULL OR TerminationDate >= HireDate),

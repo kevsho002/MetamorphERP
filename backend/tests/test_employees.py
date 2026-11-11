@@ -39,6 +39,7 @@ def sv_row(**overrides):
         "pension_fund": "Crécer",  # sin distinguir mayúsculas ni tildes
         "emergency_contact_name": "Luis López",
         "emergency_contact_phone": "7000-0000",
+        "schedule": "L-V 08:00-17:00 60",  # Fase 9: Primera AP de asignación de horario
     }
     row.update(overrides)
     return row
@@ -58,6 +59,7 @@ def gt_row(**overrides):
         "social_security_number": "1234567890",
         "emergency_contact_name": "María Pérez",
         "emergency_contact_phone": "5555-0000",
+        "horario": "L-V 07:00-16:00 60; S 07:00-11:00",
     }
     row.update(overrides)
     return row

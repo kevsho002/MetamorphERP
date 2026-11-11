@@ -17,6 +17,7 @@ from typing import Any
 from django.utils import timezone
 
 from apps.common.models import CostCenter, Country
+from apps.employees.masks import apply_mask, as_masks
 from apps.employees.models import EmployeeTemplate
 from apps.employees.schema import (
     CORE_FIELDS,
@@ -24,6 +25,7 @@ from apps.employees.schema import (
     FieldValueError,
     TemplateSpec,
     coerce_value,
+    apply_transform,
     format_pattern_error,
     is_blank,
     parse_date,
@@ -87,6 +89,7 @@ class ValidatedRow:
     core: dict[str, Any] = field(default_factory=dict)
     attributes: list[tuple[FieldSpec, str]] = field(default_factory=list)
     cost_center: CostCenter | None = None
+    initial_schedule: dict | None = None  # Fase 9: horario de la Primera AP (alta)
     messages: list[Message] = field(default_factory=list)
 
     @property
@@ -166,6 +169,9 @@ class ValidationContext:
 
 
 # --------------------------------------------------------------------- lectura de claves
+SCHEDULE_KEYS = {"schedule", "horario", "initial_schedule", "horario_inicial", "primera_ap_horario"}
+
+
 def _split_payload(raw: dict) -> tuple[dict[str, Any], dict[str, tuple[str, Any]]]:
     """Separa campos base/especiales (por alias) de candidatos a atributo dinámico."""
     known: dict[str, Any] = {}
@@ -204,6 +210,10 @@ def validate_employee_payload(
     if not isinstance(raw, dict):
         row.error("invalid_row", "El registro no es un objeto con campos (clave: valor).")
         return row
+    schedule_raw = None
+    if existing is None:  # Fase 9: el horario de la Primera AP viaja con el alta, no es un campo de la plantilla
+        schedule_raw = next((v for k, v in raw.items() if normalize_key(k) in SCHEDULE_KEYS and not is_blank(v)), None)
+        raw = {k: v for k, v in raw.items() if normalize_key(k) not in SCHEDULE_KEYS}
     known, others = _split_payload(raw)
 
     # 1. País (core.catCountry)
@@ -237,10 +247,15 @@ def validate_employee_payload(
         c = row.country
         if not c.is_active:
             row.error("inactive_country", f"El país {c.country_name} está inactivo en el catálogo; no admite altas.", "country")
-        elif hire_date < c.effective_start_date or (c.effective_end_date and hire_date > c.effective_end_date):
+        elif c.effective_end_date and hire_date > c.effective_end_date:
+            # Corrección Fase 7: la vigencia que decide un alta es la de la PLANTILLA del país (paso
+            # siguiente). EffectiveStartDate de core.catCountry es la fecha de registro del país en el
+            # catálogo, no una restricción para ingresos anteriores; solo un país dado de baja
+            # (EffectiveEndDate) bloquea ingresos posteriores a esa fecha.
             row.error(
                 "country_not_effective",
-                f"{c.country_name} no está vigente en el catálogo a la fecha de ingreso {hire_date:%d/%m/%Y}.",
+                f"{c.country_name} dejó de operar en el catálogo el {c.effective_end_date:%d/%m/%Y}: "
+                f"no admite ingresos posteriores (fecha de ingreso {hire_date:%d/%m/%Y}).",
                 "country",
             )
         row.template = ctx.template_for(c, hire_date)
@@ -300,12 +315,29 @@ def validate_employee_payload(
         try:
             value, canonical = coerce_value(spec, raw_value)
         except FieldValueError as exc:
-            row.error(exc.code, exc.message, key)
-            continue
+            legacy = _legacy_catalog_value(spec, raw_value, existing)
+            if legacy is None:
+                row.error(exc.code, exc.message, key)
+                continue
+            # Valor de texto libre registrado antes de que el campo usara catálogo (Fase 7): se conserva
+            # mientras no se cambie, pero se pide corregirlo.
+            row.warn(
+                "legacy_catalog_value",
+                f"«{spec.label}» tiene el valor heredado «{legacy}», que no está en el catálogo; selecciónelo de la lista.",
+                key,
+            )
+            value = canonical = legacy
         if spec.kind == "core":
             row.core[key] = value
         else:
             row.attributes.append((spec, canonical))
+        if canonical in spec.inactive_choices:
+            row.warn(
+                "inactive_option",
+                f"«{spec.label}»: «{spec.display(canonical)}» está inactivo en el catálogo; se conserva, "
+                "pero conviene actualizarlo.",
+                key,
+            )
 
     # Campos no reconocidos
     if row.spec:
@@ -318,12 +350,27 @@ def validate_employee_payload(
                 )
 
     _check_national_id(row, fields, ctx)
+    if existing is None and row.country and row.core.get("hire_date"):
+        from apps.personnel_actions.services import validate_initial_schedule
+
+        definition, schedule_errors = validate_initial_schedule(schedule_raw, country_id=row.country.country_id, hire_date=row.core["hire_date"])
+        for e in schedule_errors:
+            row.error("schedule", f"Primera AP de horario: {e['message']}", "schedule")
+        row.initial_schedule = definition
     if existing is None:
         _check_employee_code(row, known.get("employee_code"))
     _check_dates_and_salary(row, ctx)
     _check_cost_center(row, ctx)
     _check_duplicates(row, ctx, existing)
     return row
+
+
+def _legacy_catalog_value(spec: FieldSpec, raw: Any, existing: Employee | None) -> str | None:
+    """Edición: el valor enviado es el MISMO texto libre ya guardado en un campo que ahora usa catálogo."""
+    if existing is None or not spec.catalog or spec.kind != "attribute" or is_blank(raw):
+        return None
+    stored = next((v.value for v in existing.attribute_values.all() if v.attribute.code == spec.key), None)
+    return stored if stored is not None and str(raw).strip() == stored else None
 
 
 def _check_national_id(row: ValidatedRow, fields: dict[str, FieldSpec], ctx: ValidationContext) -> None:
@@ -334,6 +381,10 @@ def _check_national_id(row: ValidatedRow, fields: dict[str, FieldSpec], ctx: Val
     row.core["national_id_type"] = id_type
     spec = fields["national_id_number"]
     rule = spec.patterns_by_type.get(id_type)
+    if rule and rule.get("mask"):
+        # Máscara por tipo de documento (p. ej. DUI "########-#"): 012345678 -> 01234567-8.
+        number = apply_transform(spec.transform, apply_mask(as_masks(rule["mask"]), number))
+        row.core["national_id_number"] = number
     if rule and not re.fullmatch(rule["pattern"], number):
         row.error(
             "invalid_format",

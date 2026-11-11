@@ -28,7 +28,10 @@ Los campos de la plantilla que el layout no ubique se agregan al final («Otros 
 
 Reglas por campo (todas opcionales): label, required, recommended (si falta => advertencia),
 default, pattern, example, pattern_message, patterns_by_type (solo national_id_number),
-choices, min, max, min_length, max_length, transform (upper | lower | strip_spaces), help.
+choices, min, max, min_length, max_length, transform (upper | lower | strip_spaces), help,
+mask (Fase 7: "########-#" o lista; # dígito, @ letra, * alfanumérico — ver masks.py; también
+dentro de cada entrada de patterns_by_type) y catalog (Fase 7: "BANK" = lista desplegable
+alimentada por el catálogo de bancos del país, tabla hcm_bank).
 """
 
 from __future__ import annotations
@@ -43,6 +46,7 @@ from typing import Any
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
+from apps.employees.masks import apply_mask, as_masks, mask_error
 from apps.employees.models import AttributeDefinition, DataType
 
 # --------------------------------------------------------------------- campos base
@@ -96,7 +100,11 @@ FIELD_RULE_KEYS = {
     "max_length",
     "transform",
     "help",
+    "mask",
+    "catalog",
 }
+# Catálogos que pueden alimentar la lista desplegable de un campo (regla "catalog").
+CATALOGS = {"BANK": "Bancos (hcm_bank, por país)"}
 TEMPLATE_RULE_KEYS = {"min_age", "max_age", "min_base_salary", "max_base_salary", "max_future_hire_days"}
 TRANSFORMS = {"upper", "lower", "strip_spaces"}
 TOP_LEVEL_KEYS = {"core_fields", "attributes", "rules", "layout", "documents"}
@@ -158,6 +166,24 @@ class FieldSpec:
     transform: str | None = None
     help: str | None = None
     attribute: AttributeDefinition | None = None
+    mask: tuple[str, ...] = ()
+    catalog: str | None = None
+    choice_labels: dict[str, str] = field(default_factory=dict)  # código -> nombre (catálogos)
+    inactive_choices: frozenset[str] = frozenset()
+
+    def options(self) -> list[dict] | None:
+        if not self.catalog:
+            return None
+        return [
+            {"value": c, "label": self.choice_labels.get(c, c), "is_active": c not in self.inactive_choices}
+            for c in self.choices
+        ]
+
+    def display(self, value: Any) -> Any:
+        """Texto para mostrar un valor guardado (nombre del banco en vez de su código)."""
+        if value in (None, "") or not self.choice_labels:
+            return value
+        return self.choice_labels.get(str(value), value)
 
     def as_dict(self) -> dict:
         """Forma serializable: el frontend la usa para construir el formulario dinámico."""
@@ -180,6 +206,9 @@ class FieldSpec:
             "max_length": self.max_length,
             "help": self.help,
             "transform": self.transform,
+            "mask": list(self.mask) or None,
+            "catalog": self.catalog,
+            "options": self.options(),
         }
 
 
@@ -245,6 +274,9 @@ def _check_rules(path: str, rules: Any, data_type: str, errors: list[str]) -> No
                     re.compile(spec["pattern"])
                 except (KeyError, TypeError, re.error) as exc:
                     errors.append(f"{path}.patterns_by_type.{id_type}: requiere un «pattern» válido ({exc}).")
+                    continue
+                if "mask" in spec and (problem := mask_error(spec["mask"])):
+                    errors.append(f"{path}.patterns_by_type.{id_type}.mask: {problem}")
     if "choices" in rules:
         choices = rules["choices"]
         if not isinstance(choices, list) or not choices or not all(isinstance(c, str) and c.strip() for c in choices):
@@ -262,6 +294,18 @@ def _check_rules(path: str, rules: Any, data_type: str, errors: list[str]) -> No
             errors.append(f"{path}.{key}: debe ser un entero >= 0.")
     if "transform" in rules and rules["transform"] not in TRANSFORMS:
         errors.append(f"{path}.transform: valores válidos {', '.join(sorted(TRANSFORMS))}.")
+    if "mask" in rules:
+        if data_type not in (DataType.STRING,):
+            errors.append(f"{path}.mask: solo aplica a campos de texto.")
+        elif problem := mask_error(rules["mask"]):
+            errors.append(f"{path}.mask: {problem}")
+    if "catalog" in rules:
+        if rules["catalog"] not in CATALOGS:
+            errors.append(f"{path}.catalog: valores válidos {', '.join(f'{k} ({v})' for k, v in CATALOGS.items())}.")
+        elif "choices" in rules:
+            errors.append(f"{path}: use «catalog» o «choices», no ambos (las opciones salen del catálogo).")
+        elif data_type != DataType.STRING or not path.startswith("attributes"):
+            errors.append(f"{path}.catalog: solo aplica a atributos dinámicos de tipo Texto.")
 
 
 def validate_template_schema(schema: Any) -> None:
@@ -419,6 +463,9 @@ def _apply_rules(spec: FieldSpec, rules: dict) -> FieldSpec:
     spec.example = rules.get("example", spec.example)
     spec.pattern_message = rules.get("pattern_message", spec.pattern_message)
     spec.patterns_by_type = {k.upper(): v for k, v in rules.get("patterns_by_type", {}).items()}
+    if "mask" in rules:
+        spec.mask = as_masks(rules["mask"])
+    spec.catalog = rules.get("catalog", spec.catalog)
     if "choices" in rules:
         spec.choices = tuple(c.strip() for c in rules["choices"])
     for key in ("min", "max"):
@@ -462,6 +509,7 @@ def resolve_template(template) -> TemplateSpec:
             attribute=definition, help=definition.description or None,
         )
         fields[code] = _apply_rules(spec, rules)
+    _load_catalog_choices(fields, template.country_id)
 
     rules = {k: (Decimal(str(v)) if k.endswith("salary") else int(v)) for k, v in schema.get("rules", {}).items()}
     return TemplateSpec(
@@ -474,6 +522,31 @@ def resolve_template(template) -> TemplateSpec:
         layout=resolve_layout(schema.get("layout"), fields, template.country.country_name),
         documents_config=schema.get("documents") or {},
     )
+
+
+def _load_catalog_choices(fields: dict[str, FieldSpec], country_id: int) -> None:
+    """Campos con regla `catalog`: sus opciones salen de la tabla de catálogo del país."""
+    wanted = [f for f in fields.values() if f.catalog]
+    if not wanted:
+        return
+    from apps.employees.models import Bank
+
+    banks = list(Bank.objects.filter(country_id=country_id).order_by("display_order", "name"))
+    for spec in wanted:
+        if spec.catalog == "BANK":
+            spec.choices = tuple(b.code for b in banks)
+            spec.choice_labels = {b.code: b.name for b in banks}
+            spec.inactive_choices = frozenset(b.code for b in banks if not b.is_active)
+
+
+def apply_transform(transform: str | None, text: str) -> str:
+    if transform == "upper":
+        return text.upper()
+    if transform == "lower":
+        return text.lower()
+    if transform == "strip_spaces":
+        return text.replace(" ", "")
+    return text
 
 
 def resolve_layout(layout: dict | None, fields: dict[str, FieldSpec], country_name: str) -> list[dict]:
@@ -624,6 +697,8 @@ def coerce_value(spec: FieldSpec, raw: Any) -> tuple[Any, str]:
         raise FieldValueError(f"{label} debe ser Sí o No; se recibió «{_as_text(raw)}».", "invalid_boolean")
 
     text = _as_text(raw)
+    if spec.mask:
+        text = apply_mask(spec.mask, text)  # «012345678» -> «01234567-8» (antes de transform y pattern)
     if spec.transform == "upper" or dt == DataType.CHOICE:
         text = text.upper()
     elif spec.transform == "lower" or dt == DataType.EMAIL:
@@ -631,14 +706,23 @@ def coerce_value(spec: FieldSpec, raw: Any) -> tuple[Any, str]:
     if spec.transform == "strip_spaces":
         text = text.replace(" ", "")
 
-    if dt == DataType.CHOICE or spec.choices:
+    if dt == DataType.CHOICE or spec.choices or spec.catalog:
         options = {_fold(c): c for c in spec.choices}  # sin distinguir mayúsculas ni tildes
+        for code, name in spec.choice_labels.items():  # catálogos: también por nombre («Banco Agrícola»)
+            options.setdefault(_fold(name), code)
         candidate = _fold(CHOICE_SYNONYMS.get(spec.key, {}).get(_fold(text), text))
         if candidate not in options:
-            raise FieldValueError(
-                f"{label} tiene un valor no permitido «{text}». Opciones válidas: {', '.join(spec.choices)}.",
-                "invalid_choice",
+            if spec.catalog and not spec.choices:
+                raise FieldValueError(
+                    f"{label}: el catálogo {CATALOGS[spec.catalog]} no tiene opciones para este país; "
+                    "un administrador debe registrarlas en /admin/.",
+                    "empty_catalog",
+                )
+            valid = (
+                ", ".join(f"{spec.choice_labels[c]} ({c})" for c in spec.choices if c not in spec.inactive_choices)
+                if spec.choice_labels else ", ".join(spec.choices)
             )
+            raise FieldValueError(f"{label} tiene un valor no permitido «{text}». Opciones válidas: {valid}.", "invalid_choice")
         text = options[candidate]
     if dt == DataType.EMAIL:
         try:

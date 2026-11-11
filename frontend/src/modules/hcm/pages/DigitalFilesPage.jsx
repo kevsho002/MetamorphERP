@@ -11,6 +11,7 @@ const PAGE_SIZE = 25;
 const STATUSES = [
   { value: "ACTIVE", label: "Activos" },
   { value: "INACTIVE", label: "Inactivos" },
+  { value: "TERMINATED", label: "Terminados" },
   { value: "ALL", label: "Todos" },
 ];
 

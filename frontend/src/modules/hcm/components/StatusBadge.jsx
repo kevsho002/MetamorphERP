@@ -1,7 +1,7 @@
 const EMPLOYMENT = {
   ACTIVE: ["ok", "Activo"],
-  SUSPENDED: ["warn", "Suspendido"],
-  TERMINATED: ["muted", "Retirado"],
+  INACTIVE: ["warn", "Inactivo"],
+  TERMINATED: ["muted", "Terminado"],
 };
 
 const ROW = {

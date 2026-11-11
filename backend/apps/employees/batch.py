@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.employees.models import ImportBatch, ImportBatchRow
 from apps.employees.parsers import ParsedFile, json_safe
+from apps.personnel_actions.services import ActionError, create_initial_schedule_action
 from apps.employees.services import create_employee, explain_database_error
 from apps.employees.validation import Message, ValidatedRow, ValidationContext, validate_employee_payload
 from apps.hcm.models import Employee
@@ -34,7 +35,7 @@ ERROR_LABELS = {
     "employee_code_country": "ID corporativo de otro país",
     "unknown_country": "país inexistente en el catálogo",
     "inactive_country": "país inactivo",
-    "country_not_effective": "país fuera de vigencia",
+    "country_not_effective": "país dado de baja en el catálogo",
     "no_template": "sin plantilla vigente para el país",
     "duplicate_in_file": "documento duplicado dentro del archivo",
     "duplicate_employee": "empleado ya registrado",
@@ -167,7 +168,7 @@ def _actor_name(user) -> str:
     return getattr(user, "username", None) or "sistema"
 
 
-def _write_group(outcomes: list[RowOutcome], *, atomicity: str, dry_run: bool, actor: str) -> None:
+def _write_group(outcomes: list[RowOutcome], *, atomicity: str, dry_run: bool, actor: str, user=None) -> None:
     """Escribe las filas válidas de UN país. Debe llamarse dentro de una transacción."""
     Status = ImportBatchRow.Status
     try:
@@ -176,6 +177,14 @@ def _write_group(outcomes: list[RowOutcome], *, atomicity: str, dry_run: bool, a
                 try:
                     with transaction.atomic():
                         employee = create_employee(outcome.row, actor)
+                        # Fase 9: ningún colaborador queda activo sin su Primera AP de asignación de horario.
+                        create_initial_schedule_action(employee, outcome.row.initial_schedule, user=user)
+                except ActionError as exc:
+                    outcome.row.error("schedule", f"Primera AP de horario: {exc.message}", "schedule")
+                    outcome.status = Status.ERROR
+                    if atomicity == ImportBatch.Atomicity.COUNTRY:
+                        raise _RollbackCountry from exc
+                    continue
                 except DatabaseError as exc:
                     outcome.row.error("database", explain_database_error(exc))
                     outcome.status = Status.ERROR
@@ -246,7 +255,7 @@ def run_batch(
                 outcome.status = Status.NOT_APPLIED
                 outcome.blocked_by = [o.row.row_number for o in failed]
             continue
-        _write_group(valid, atomicity=atomicity, dry_run=dry_run, actor=actor)
+        _write_group(valid, atomicity=atomicity, dry_run=dry_run, actor=actor, user=user)
 
     # Registro del lote
     batch = batch or ImportBatch()
@@ -309,6 +318,6 @@ def process_single(payload: dict, *, user=None, dry_run: bool = False, extra_che
     if extra_checks is not None:
         extra_checks(outcome.row)
     if outcome.row.ok:
-        _write_group([outcome], atomicity=ImportBatch.Atomicity.ROW, dry_run=dry_run, actor=_actor_name(user))
+        _write_group([outcome], atomicity=ImportBatch.Atomicity.ROW, dry_run=dry_run, actor=_actor_name(user), user=user)
     return outcome
 

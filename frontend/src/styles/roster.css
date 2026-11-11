@@ -1,0 +1,159 @@
+/* ==========================================================================
+   Fase 6 — Roster operativo (mismos tokens de global.css)
+   ========================================================================== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.roster__asof {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.roster__asof input,
+.roster-editor input[type="date"] {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font: inherit;
+}
+.roster-table th[scope="row"] {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.roster-table td:last-child {
+  text-align: right;
+}
+.roster-editor {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  background: var(--color-info-bg);
+}
+.roster-editor .form-section {
+  background: var(--color-surface);
+}
+.roster-editor__count {
+  margin-right: auto;
+}
+.roster-field--changed .field__label::after {
+  content: " • modificado";
+  color: var(--color-accent);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+.roster-history {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+.roster-history__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.roster-history__superseded .timeline__summary strong {
+  text-decoration: line-through;
+  color: var(--color-muted);
+}
+.roster-report th,
+.roster-report td {
+  vertical-align: top;
+  min-width: 120px;
+}
+.roster-cell {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.roster-cell li + li {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px dashed var(--color-border);
+}
+.roster-filter-check {
+  align-self: end;
+}
+
+/* ==========================================================================
+   Fase 7 — General IDs, vinculación de cuentas y máscaras
+   ========================================================================== */
+.gid-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.lookup-results {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+}
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-2) 0;
+}
+.segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+  background: var(--color-surface);
+}
+.segmented__item--active {
+  border-color: var(--color-accent);
+  background: var(--color-info-bg);
+  font-weight: 600;
+}
+.account-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.account-pick p {
+  margin: 0;
+}
+.account-search__results {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.account-search__results li {
+  border-bottom: 1px solid var(--color-border);
+  padding: 4px 8px;
+}
+.account-search__results li:last-child {
+  border-bottom: 0;
+}
+.account-search__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.account-search__item:hover,
+.account-search__item:focus-visible {
+  color: var(--color-accent);
+}

@@ -10,6 +10,11 @@ En producción Django sirve también el build de React (un solo despliegue, mism
 | 3 | Gestión de empleados: alta individual y masiva (CSV/Excel/JSON), plantillas JSON por país y fecha de efectividad, atributos dinámicos (EAV), reporte en lenguaje natural, administración en `/admin/` |
 | 4 | Frontend React de empleados: lista con filtros, formulario dinámico de alta/edición según la plantilla del país, carga masiva con vista previa y reporte por fila, control de roles en la interfaz; edición por API (PATCH) |
 | 5 | Expediente digital dinámico (pestañas/secciones por plantilla y fecha de efectividad), fotografía y documentos PNG/JPG/JPEG con visor; cuenta Metamorph vinculada desde el alta; `/admin/` reservado a sesión, cliente web y auditoría |
+| 6 | Roster operativo independiente de la ficha: clientes, marcas, líneas/sub-líneas, wave y fechas de training, documento para reportes; EAV temporal con historial («Now»), sección Roster en React y consulta cruzada por rango de fechas |
+| 7 | Refinamiento: máscaras de entrada desde la plantilla JSON, catálogo de bancos, corrección de vigencia, ciclo de vida Activo / Inactivo / Terminado, vincular una cuenta existente, catálogos operativos (clientes, marcas, LOB, sub-LOB) y módulo independiente de General IDs |
+| 8 | Horarios y tiempo: turnos parametrizables en JSON (`lunch_minutes` = solo duración), asignación por fechas efectivas sin traslapes, tiempo evaluado por fecha de ocurrencia (turnos que cruzan la medianoche), nocturnidad parametrizable por país, ciclos de pago y cortes operativos internos, reporte de horas teóricas vs reales |
+| 9 | Acciones de Personal (AP) EAV: folio único, fecha efectiva, justificación, estado y firmas digitales por rol; horarios atómicos por día (inicio, fin, almuerzo, horas diurnas y nocturnas) en lugar de turnos predefinidos; Primera AP de asignación de horario obligatoria en el alta |
+| 10 | Correcciones BPO: ciclos con cortes que cruzan de mes (10–24 / 25–9) validando solo la continuidad contra el periodo anterior; carga manual de tiempos retirada (base lista para un Web Timer interno); ciclos agrupados por año y frecuencia; varios bloques y varias AP el mismo día con almuerzo opcional y reglas de almuerzo por país; fechas de ocurrencia enlazadas a un desglose diario |
 
 ```
 MetamorphERP/
@@ -24,7 +29,8 @@ MetamorphERP/
 │       ├── 050_core_cost_center.sql         # Fase 2: centros de costos
 │       ├── 060_hcm_employee_cost_center.sql # Fase 3: Employee.CostCenterId con FK compuesta (mismo país)
 │       ├── 090_seed_reference_data.sql
-│       └── 095_hcm_digital_file_media.sql   # Fase 5: documentos sensibles, PROFILE_PHOTO, solo PNG/JPEG
+│       ├── 095_hcm_digital_file_media.sql   # Fase 5: documentos sensibles, PROFILE_PHOTO, solo PNG/JPEG
+│       └── 096_hcm_employee_lifecycle.sql   # Fase 7: estados Activo / Inactivo / Terminado
 ├── backend/
 │   ├── manage.py
 │   ├── config/                     # settings (.env), urls, wsgi/asgi
@@ -51,7 +57,20 @@ MetamorphERP/
 │   │   │   ├── media.py            #   Fase 5: validación segura de imágenes (firma + Pillow) y foto normalizada
 │   │   │   ├── management/commands/purge_orphan_media.py
 │   │   │   ├── serializers.py · views.py · urls.py · admin.py
-│   │   │   └── migrations/         #   0001 tablas; 0002 FKs a core/hcm; 0003 semilla (atributos + plantillas SV/GT/MX/CO); 0004 layout + documentos
+│   │   │   ├── masks.py            #   Fase 7: máscaras de entrada (# dígito, @ letra, * alfanumérico)
+│   │   │   └── migrations/         #   0001 tablas; 0002 FKs a core/hcm; 0003 semilla (atributos + plantillas SV/GT/MX/CO); 0004 layout + documentos; 0005 bancos + máscaras
+│   │   ├── operations/             # Fase 7: catálogos operativos ops_client / ops_brand / ops_line_of_business / ops_sub_line_of_business
+│   │   ├── general_ids/            # Fase 7: General IDs (herramientas, tipos, IDs por empleado con vigencia; trigger + vista)
+│   │   ├── personnel_actions/      # Fase 9: Acciones de Personal (tipos EAV, firmas por rol, efecto horario / salario)
+│   │   ├── scheduling/             # Fases 8–10: horarios vigentes (por AP), nocturnidad, almuerzo, ciclos/cortes, tiempo por fecha de ocurrencia
+│   │   │   ├── engine.py           #   motor puro: bloques por día, división por día calendario, almuerzo, nocturnidad, periodos
+│   │   │   ├── fields.py           #   WallClockDateTimeField: hora local de la operación, sin conversión a UTC
+│   │   │   └── migrations/         #   0001 tablas; 0002 FKs + triggers 50040–50044 + vistas; 0003 parámetros de referencia;
+│   │   │                           #   0005–0006 (Fase 10) reglas de almuerzo, modo de asignación, triggers 50045–50047
+│   │   ├── roster/                 # Fase 6: roster operativo (dominio independiente de la ficha)
+│   │   │   ├── models.py           #   RosterDimension/Item (jerarquías), RosterAttribute (EAV), RosterAssignment (temporal)
+│   │   │   ├── services.py         #   reglas temporales: cortes por fecha efectiva, «Now», correcciones sin borrar
+│   │   │   └── migrations/         #   0001 tablas; 0002 FKs + trigger anti-superposición + vista; 0003 semilla
 │   │   ├── system/                 # Fase 5: parámetros de sesión, cliente web, sesiones activas, auditoría
 │   │   │   ├── models.py           #   PlatformSettings (fila única), UserSession, AuditEvent
 │   │   │   ├── middleware.py       #   inactividad, duración máxima, modo mantenimiento
@@ -76,6 +95,10 @@ MetamorphERP/
         │   │                       #   Fase 5: DossierTab, DocumentsPanel, ImageViewer, ImageUploadDialog,
         │   │                       #   EmployeePhoto, AccountOptions, UserAccountPanel, TemporaryPassword, HistoryPanel
         │   └── pages/              #   lista, expediente, alta/edición, carga masiva, historial, expedientes digitales
+        ├── roster/                 # Fase 6: RosterPanel (pestaña del expediente), RosterField, consulta cruzada
+        ├── generalIds/             # Fase 7: GeneralIdsPanel (pestaña del expediente), consulta y buscador de IDs
+        ├── personnelActions/       # Fase 9: bandeja, detalle con firmas, nueva AP (EAV), WeeklyScheduleEditor, pestaña del expediente
+        ├── scheduling/             # Fases 8–10: SchedulePanel (pestaña «Horario»), reporte, desglose diario, cortes por año
         └── {wfm,payroll,system}/
 ```
 
@@ -87,6 +110,10 @@ MetamorphERP/
 | `dbo.accounts_customuser`, `auth_*`, `django_session`, `django_admin_log`, `django_content_type` | migraciones de Django | modelos administrados |
 | `dbo.hcm_attribute_definition`, `hcm_employee_template`, `hcm_employee_attribute_value`, `hcm_import_batch`, `hcm_import_batch_row` | migraciones de Django (Fase 3) | modelos administrados |
 | `dbo.sys_platform_settings`, `sys_user_session`, `sys_audit_event` | migraciones de Django (Fase 5) | modelos administrados |
+| `dbo.roster_dimension`, `roster_dimension_item`, `roster_attribute`, `roster_assignment`, vista `vw_RosterAssignment` | migraciones de Django (Fase 6) | modelos administrados |
+| `dbo.hcm_bank`; `ops_client`, `ops_brand`, `ops_line_of_business`, `ops_sub_line_of_business`, vista `vw_OpsClientBrand`; `gid_source_tool`, `gid_id_type`, `gid_id_type_client`, `gid_id_type_brand`, `gid_employee_general_id`, vista `vw_EmployeeGeneralId` | migraciones de Django (Fase 7) | modelos administrados |
+| `dbo.sch_schedule_assignment`, `sch_night_rule`, `sch_lunch_rule`, `sch_pay_cycle`, `sch_pay_period`, `sch_time_record`, `sch_time_record_day`; vistas `vw_SchTimeByOccurrenceDate`, `vw_SchScheduleAssignment`, `vw_SchScheduleDay`, `vw_SchPayPeriod`, `vw_SchLunchRule` | migraciones de Django (Fases 8–10) | modelos administrados |
+| `dbo.pa_action_type`, `pa_action_attribute`, `pa_approval_step`, `pa_action`, `pa_action_value`, `pa_action_signature`, `pa_folio_sequence`; vista `vw_PersonnelAction` | migraciones de Django (Fase 9) | modelos administrados |
 
 `accounts.0002` y `employees.0002` crean FKs reales hacia tablas SQL-first (`hcm.Employee`, `core.catCountry`,
 `core.catCostCenter`). Por eso **`deploy.ps1` va antes de `migrate`**.
@@ -115,6 +142,10 @@ Luhn (letras A=10…Z=35), reserva atómica dentro de la transacción del alta (
 | hcm.view / hcm.manage | ✔ / ✔ | ✔ / ✔ | ✔ / – | |
 | wfm.view / wfm.manage | ✔ / ✔ | ✔ / – | ✔ / ✔ | |
 | payroll.view / payroll.manage | ✔ / ✔ | ✔ / ✔ | | |
+| roster.view / roster.manage (Fase 6) | ✔ / ✔ | ✔ / ✔ | ✔ / ✔ | |
+| general_ids.view / general_ids.manage (Fase 7) | ✔ / ✔ | ✔ / ✔ | ✔ / ✔ | |
+| schedules.view / schedules.manage (Fase 8) | ✔ / ✔ | ✔ / ✔ | ✔ / ✔ | |
+| actions.view / actions.create (Fase 9; firmar depende del rol de cada paso) | ✔ / ✔ | ✔ / ✔ | ✔ / ✔ | |
 | system.status | ✔ | | | |
 | self.view | ✔ | ✔ | ✔ | ✔ |
 
@@ -250,10 +281,10 @@ centros de costos. Empleados, valores EAV y cargas masivas se gestionan solo en 
 
 | Ruta (React) | Pantalla | Permiso |
 |--------------|----------|---------|
-| `/hcm/employees` | Lista con búsqueda y filtros por país, estado (activos / inactivos / suspendidos / retirados) y centro de costos; orden y paginación. Los filtros viven en la URL. | hcm.view |
+| `/hcm/employees` | Lista con búsqueda y filtros por país, estado (activos / inactivos / terminados) y centro de costos; orden y paginación. Los filtros viven en la URL. | hcm.view |
 | `/hcm/employees/:ID` | Ficha: datos base, vínculo laboral y «Datos requeridos por {país}» con las etiquetas de su plantilla | hcm.view |
 | `/hcm/employees/new` | Alta: se elige país y fecha de ingreso → se consulta la plantilla vigente y se renderizan sus campos (obligatorios, recomendados, patrones con ejemplo, listas de opciones, centros de costos del país) | hcm.manage |
-| `/hcm/employees/:ID/edit` | Edición con las mismas reglas; país e ID corporativo bloqueados; estado laboral y fecha de retiro | hcm.manage |
+| `/hcm/employees/:ID/edit` | Edición con las mismas reglas; país e ID corporativo bloqueados; estado laboral y fecha de terminación | hcm.manage |
 | `/hcm/employees/import` | Carga masiva: arrastrar/soltar CSV/XLSX/JSON, atomicidad, **«Solo validar (vista previa)»** activado por defecto, luego «Aplicar carga»; CSV de ejemplo por país | hcm.manage |
 | `/hcm/employees/imports` · `/imports/:id` | Historial de cargas y reporte de cada lote | hcm.manage |
 
@@ -356,6 +387,348 @@ Migraciones de la Fase 5: `database/scripts/095_hcm_digital_file_media.sql` (con
 `sqlcmd -S localhost -E -C -I -f 65001 -d MetamorphERP -i database\scripts\095_hcm_digital_file_media.sql`) y luego
 `python manage.py migrate` (`employees.0004`, `system.0001`). Dependencia nueva: `Pillow`.
 
+## Roster operativo (Fase 6)
+
+**Dos dominios separados.** La *ficha* (hcm.Employee + EAV de la plantilla del país + expediente, cuenta y
+documentos) describe a la persona. El *roster* (`apps/roster`, tablas `roster_*`) describe su asignación operativa en
+el tiempo. Ninguno modifica al otro; se cruzan solo por el empleado.
+
+| Atributo (semilla) | Tipo | Regla |
+|--------------------|------|-------|
+| Cliente · Marca | dimensión `CLIENT` · `BRAND` | la marca debe pertenecer al cliente vigente |
+| Línea de negocio · Sub-línea | `LOB` · `SUB_LOB` | la sub-línea debe pertenecer a la línea vigente |
+| Wave de training | texto (60) | |
+| Inicio de training · Inicio de nesting · Fin de nesting · Inicio a operaciones | fecha | cada una ≥ la anterior (`not_before`) |
+| Documento de identidad para reportes | dimensión `REPORT_ID_TYPE` (por país) | DUI, DPI, CURP, CC… (referencia) |
+
+* **Configurable sin código**: en `/admin/` › Roster operativo se crean dimensiones (y sus elementos: clientes,
+  marcas, líneas…) y atributos (texto, número, fecha, sí/no, lista, dimensión; dependencia jerárquica; reglas
+  `pattern`, `max_length`, `min`/`max`, `not_before`/`not_after`). La interfaz React los dibuja y valida sola.
+  Clientes, marcas y líneas no vienen sembrados: son datos del negocio.
+* **Temporalidad**: cada valor vale en `[desde, hasta]`; `hasta` vacío = **Now**. Un cambio «desde D» corta el
+  intervalo vigente en D-1; los cambios pueden ser futuros (quedan como «próximo cambio») o retroactivos (no pisan
+  lo programado). Quitar un valor cierra su intervalo. Nada se borra: las correcciones marcan la fila como
+  reemplazada (`superseded_at/by`) y quedan en el historial; cada cambio se audita (`roster_changed`).
+* **Integridad en SQL Server**: FK a `hcm.Employee`, `CHECK` de fechas, un solo «Now» por atributo (índice filtrado) y
+  el trigger `TR_roster_assignment_no_overlap`, que rechaza intervalos superpuestos aunque se escriba directo en la
+  tabla. `dbo.vw_RosterAssignment` expone los intervalos vigentes con ID corporativo y descripciones (Power BI / SQL).
+* **React**: pestaña **Roster** del expediente (vigente a cualquier fecha, próximo cambio, historial por atributo con
+  correcciones, editor con fecha efectiva, motivo, «Validar sin guardar» y filtros jerárquicos) y menú
+  **Roster operativo › Consulta de roster** (ficha + asignaciones por rango, filtros por país, estado y dimensión,
+  exportación CSV en formato largo).
+
+| Método | Ruta (`/api/v1`) | Permiso |
+|--------|------------------|---------|
+| GET | `/roster/attributes/` · `/roster/dimensions/` | roster.view |
+| GET | `/roster/employees/{ID}/?as_of=&include=employee` (roster vigente; `include=employee` agrega la ficha con su RBAC) | roster.view (+ hcm.view) |
+| GET | `/roster/employees/{ID}/history/?attribute=&include_superseded=1` | roster.view |
+| POST | `/roster/employees/{ID}/changes/` · `/changes/validate/` — `{effective_date, reason, values: {código: valor \| null}}` | roster.manage |
+| GET | `/roster/report/?from=&to=&country=&status=&cost_center=&search=&attribute=&value=&assigned=1&export=csv` | roster.view |
+
+## Refinamiento y General IDs (Fase 7)
+
+### Ficha y alta del empleado
+
+* **Máscaras de entrada** (regla `mask` de la plantilla JSON, también por tipo de documento en `patterns_by_type`):
+  `#` dígito, `@` letra, `*` letra o dígito; lo demás es literal. El usuario escribe solo los caracteres
+  significativos (`012345678` → `01234567-8`); con una lista se elige la máscara que calce
+  (NIT SV: `["########-#", "####-######-###-#"]`). El backend aplica la misma regla al validar (formulario y
+  cargas masivas) y `pattern` sigue siendo la validación final. Semilla: DUI, DPI (GT), NIT (SV) y teléfonos por país.
+* **Catálogo de bancos** (`hcm_bank`, por país, `/admin/` › Bancos): la regla `"catalog": "BANK"` convierte un campo de
+  texto en lista desplegable. Se guarda el código del banco; en cargas masivas se acepta el código o el nombre.
+  Un banco desactivado se conserva en los expedientes (advertencia). Un valor de texto libre registrado antes del
+  catálogo se conserva mientras no se cambie y se pide elegir uno de la lista. Los bancos sembrados son de referencia.
+* **Corrección de vigencia**: el alta la decide la **plantilla** del país vigente a la fecha de ingreso.
+  `core.catCountry.EffectiveStartDate` (fecha de registro del país en el catálogo, 2026-01-01) ya no bloquea ingresos
+  anteriores, ni en la validación ni en `core.usp_GenerateEmployeeCode`; solo un país dado de baja
+  (`EffectiveEndDate`) rechaza ingresos posteriores a la baja.
+* **Ciclo de vida**: `ACTIVE` Activo, `INACTIVE` Inactivo, `TERMINATED` **Terminado** (exige fecha de terminación).
+  `096_hcm_employee_lifecycle.sql` migra `SUSPENDED` → `INACTIVE` y actualiza el `CHECK`. Filtro `status=NOT_ACTIVE`
+  = inactivos + terminados.
+
+### Vincular una cuenta Metamorph existente
+
+En el alta («¿Desea crear un perfil…?» › *Vincular una cuenta existente*) o en la pestaña *Cuenta Metamorph* del
+expediente se busca una cuenta **sin empleado** y se vincula. La cuenta conserva su usuario, contraseña y rol y toma
+el centro de costos del empleado. Solo se listan las cuentas cuyo rol puede administrar quien vincula
+(RRHH no ve ni vincula Administradores). Se audita como `user_linked`.
+
+| Método | Ruta (`/api/v1`) | Permiso |
+|--------|------------------|---------|
+| GET | `/hcm/user-account-candidates/?search=` · `/hcm/employees/{ID}/user-account/candidates/` | users.update |
+| POST | `/hcm/employees/{ID}/user-account/link/` — `{user_id}` · en el alta: `user_account: {"mode": "link", "user_id": 12}` | users.update |
+
+### Catálogos operativos (`apps/operations`)
+
+`/admin/` › Catálogos operativos: **Clientes** (con sus marcas y los General IDs que aplican), **Marcas (brands)**,
+**Líneas de negocio (LOB)** y **Sub-líneas** (tablas `ops_*`). Son la fuente de verdad. Cada registro sincroniza su
+elemento en las dimensiones `CLIENT`, `BRAND`, `LOB` y `SUB_LOB` del roster, que por eso ya no se editan desde
+el admin del roster.
+* El código no cambia después de creado y nada se borra (se desactiva).
+* Desactivar un cliente desactiva sus marcas; desactivar una LOB desactiva sus sub-líneas.
+* Cada cambio queda en la auditoría (categoría *Catálogos operativos*).
+
+Lectura: `GET /operations/catalogs/` (roster.view).
+
+### General IDs (`apps/general_ids`, independiente del roster)
+
+Llaves para cruces (JOINs) en reportes: ACD ID, Payroll Tool ID, etc.
+
+| Tabla | Contenido |
+|-------|-----------|
+| `gid_source_tool` | herramientas / software de origen (catálogo propio, con categoría y proveedor) |
+| `gid_id_type` | tipos de ID: herramienta, **nivel de registro** (global / por cliente / por marca), *varios activos por empleado*, *valor único*, patrón, ejemplo, longitud y normalización |
+| `gid_id_type_client` · `gid_id_type_brand` | **restricciones en cascada**, configuradas en la ficha del cliente y de la marca: sin restricciones = aplica a todos; cliente habilitado = el cliente y **todas** sus marcas; marca habilitada = solo esa marca |
+| `gid_employee_general_id` | valor del ID del empleado con **vigencia** `[desde, hasta]` (vacío = «Now»), cliente/marca, notas y quién lo registró |
+
+* Un empleado puede tener **varios IDs activos a la vez**: uno por tipo, o varios del mismo tipo si este lo permite
+  (p. ej. un ACD ID por cliente/marca).
+* Con *valor único*, un valor identifica a un solo registro en cada fecha. El trigger
+  `TR_gid_employee_general_id_rules` lo garantiza en SQL Server (errores 50030 y 50031) aunque se escriba directo en la tabla.
+* Los IDs no se borran: se **cierran** (fecha «hasta») o se **corrigen**, con auditoría (categoría *General IDs*).
+* JOIN en SQL / Power BI con `dbo.vw_EmployeeGeneralId`:
+
+```sql
+SELECT g.EmployeeCode, g.FullName, a.*
+FROM acd_interval_data AS a
+JOIN dbo.vw_EmployeeGeneralId AS g
+  ON g.IdTypeCode = 'ACD_ID' AND g.IdValue = a.agent_id
+ AND a.call_date BETWEEN g.EffectiveStart AND ISNULL(g.EffectiveEnd, '9999-12-31');
+```
+
+* React: pestaña **General IDs** del expediente (registrar, cerrar, corregir, vigentes a una fecha o historial) y
+  menú **General IDs › Consulta de General IDs** (buscador «¿a quién pertenece este ID?», filtros y CSV).
+* Semilla de referencia: herramientas `ACD` y `PAYROLL_TOOL`; tipos `ACD_ID` (por cliente, varios activos) y
+  `PAYROLL_TOOL_ID` (global, uno vigente). Renómbrelos o agregue los reales en `/admin/` › General IDs.
+
+| Método | Ruta (`/api/v1`) | Permiso |
+|--------|------------------|---------|
+| GET | `/general-ids/catalogs/` (herramientas, tipos con restricciones, clientes y marcas) | general_ids.view |
+| GET | `/general-ids/employees/{ID}/?as_of=&history=1` | general_ids.view |
+| POST | `/general-ids/employees/{ID}/` · `/validate/` — `{id_type, value, client, brand, effective_start, effective_end, notes}` | general_ids.manage |
+| PATCH · POST | `/general-ids/employees/{ID}/{pk}/` (corregir) · `/{pk}/close/` `{effective_end}` | general_ids.manage |
+| GET | `/general-ids/lookup/?type=ACD_ID&value=5001&date=` | general_ids.view |
+| GET | `/general-ids/report/?from=&to=&type=&tool=&client=&brand=&country=&search=&export=csv` | general_ids.view |
+
+Migraciones de la Fase 7: `database/scripts/096_hcm_employee_lifecycle.sql` y `010_core_employee_code.sql`
+(re-ejecutable; corrige el SP) con `deploy.ps1`, y luego `python manage.py migrate`.
+
+## Horarios, tiempo y cortes de nómina (Fase 8)
+
+App `apps/scheduling` (tablas `sch_*`). El cálculo vive en `engine.py` (funciones puras, probadas aparte);
+SQL Server es la última barrera con triggers.
+
+### Horario atómico por día (JSON)
+
+Desde la Fase 9 **no hay turnos predefinidos**: cada horario se escribe día por día en una Acción de Personal y se
+guarda en la asignación vigente con sus horas diurnas y nocturnas calculadas:
+
+```json
+{
+  "days": {
+    "mon": {"start": "22:00", "end": "06:00", "lunch_minutes": 30, "day_minutes": 0, "night_minutes": 450},
+    "tue": {"start": "14:00", "end": "23:00", "lunch_minutes": 60, "day_minutes": 267, "night_minutes": 213},
+    "sat": null, "sun": null
+  },
+  "lunch_allocation": "PROPORTIONAL"
+}
+```
+
+* Jornada por día de la semana (`mon` … `sun`; también se aceptan `lunes` … `domingo`). `null` o ausente = descanso.
+* `lunch_minutes` es **solo la duración** asignada al almuerzo (30, 60…). La hora exacta la programa WFM: se rechazan
+  claves como `lunch_start` / `lunch_end`.
+* Si `end` ≤ `start`, la jornada **cruza la medianoche**. Se valida que no pise la jornada del día siguiente.
+* `lunch_allocation`: cómo se descuenta el almuerzo cuando la jornada cae en dos fechas (su hora no se conoce):
+  `PROPORTIONAL` (predeterminado), `START_DAY` o `LONGEST_SEGMENT`.
+* `day_minutes` / `night_minutes` (horas diurnas y nocturnas programadas, netas de almuerzo) las calcula el sistema con
+  la regla de nocturnidad del país vigente a la fecha efectiva. Si se envían, deben coincidir con el cálculo.
+* En cargas masivas se acepta la notación compacta `L-V 08:00-17:00 60; S 08:00-12:00` (días L M X J V S D, rangos y
+  listas; el número final son los minutos de almuerzo).
+
+### Fecha de ocurrencia y turnos que cruzan la medianoche
+
+Toda hora, programada o laborada, cuenta en el **día calendario en que ocurrió**. Un turno lunes 22:00 – martes
+06:00 aporta 2 h al lunes y 6 h al martes. Ambas porciones conservan `shift_date` = lunes: es **un** turno, no
+dos. Los registros de tiempo (`sch_time_record`) se guardan completos y su reparto por día queda en
+`sch_time_record_day`, una fila por fecha de ocurrencia, con minutos nocturnos y la regla aplicada.
+
+* Entrada/salida en **hora local de la operación** (`AAAA-MM-DD HH:MM`, sin zona horaria). Se guarda tal cual
+  (`WallClockDateTimeField`), sin conversión a UTC.
+* También se aceptan horas reportadas para un día (`occurrence_date` + `minutes` u `hours`).
+* Cada registro se enlaza al turno programado con el que más se traslapa (trazabilidad). Si no hay ninguno queda
+  «sin turno».
+* No se aceptan traslapes por empleado (trigger **50041**), fechas futuras, fechas fuera de la relación laboral
+  ni fechas dentro de un corte cerrado.
+
+### Horarios vigentes por fechas efectivas (los crea una AP)
+
+`sch_schedule_assignment` guarda el horario de cada AP de horario aprobada, con `effective_start_date` = fecha
+efectiva de la AP y fin «Now». La AP siguiente cierra el horario anterior el día previo. Un empleado no tiene dos
+horarios en la misma fecha (trigger **50040**). Una AP de horario no puede tener fecha igual o anterior a la de un
+horario ya aplicado, ni caer en un corte cerrado. No hay altas ni ediciones manuales de horarios.
+
+### Nocturnidad parametrizable (`/admin/` › Reglas de nocturnidad)
+
+* Por país y con vigencia: ventana horaria (puede cruzar la medianoche) y % de recargo.
+* No se permiten dos reglas activas del mismo país con vigencias que se cruzan (trigger **50042**).
+* Semilla: El Salvador 19:00–06:00 con 25 % (Código de Trabajo, arts. 161 y 168). Los demás países se configuran
+  con su norma.
+* El reporte muestra los minutos nocturnos y su **equivalente de recargo** en minutos (no calcula montos).
+
+### Ciclos de pago y cortes operativos internos
+
+* `/admin/` › Ciclos de pago: país, frecuencia (igual que la ficha: mensual / quincenal / semanal) y regla del
+  periodo:
+  * `HALF_MONTH`: dos periodos por mes. «Día de inicio» 1 y «fin de la primera quincena» 15 = calendario (1–15 y
+    16–fin). Con 10 y 24 = **corte BPO que cruza de mes**: del 10 al 24 y del 25 al 9 del mes siguiente (Fase 10).
+  * `MONTH`: del día de inicio al día anterior del mes siguiente (1 = mes calendario).
+  * `FIXED_DAYS`: bloques de N días desde una fecha ancla (semanal = 7, catorcenal = 14).
+* **Corte interno**: `cutoff_lag_days` días antes del fin del periodo. La ventana de asistencia va del día
+  siguiente al corte anterior hasta el corte actual, así que las ventanas son contiguas. Ejemplo: quincena 16–30
+  nov con corte 5 días antes → asistencia del 11 al 25 nov.
+* Fecha de pago: `payment_lag_days` después del fin.
+* «Generar periodos» crea los del año (los existentes, incluidos los ajustados a mano, no se tocan). Cada periodo
+  nuevo continúa el día siguiente al último existente: si la regla cambió (p. ej. de 1–15 a 10–24), el primero se
+  recorta o se adelanta para no dejar huecos ni colisiones. Saltarse un año entero se rechaza.
+* Un **corte cerrado** bloquea cambios de horarios y registros de tiempo en su ventana. Para un ajuste se
+  reabre el corte, y queda auditado.
+* Triggers **50043** / **50044** (colisión de periodos / ventanas de corte) y, desde la Fase 10, **50045** / **50046**:
+  cada periodo y su ventana de corte deben iniciar el día siguiente al fin del periodo anterior del ciclo. No se
+  valida el mes: los cortes pueden cruzar de un mes al otro. Cerrar o reabrir un corte no dispara estas reglas.
+* Cada periodo pertenece al **año en que inicia** (el corte del 25/12 al 09/01 es del año que termina): la pantalla
+  de ciclos se agrupa por año y por frecuencia, con los periodos por mes y plegados.
+* Semilla: ciclos `SV_QUINCENAL` y `SV_MENSUAL` con los periodos de 2026, sin corte anticipado. Ajuste
+  `cutoff_lag_days` según la operación. Fase 10: ejemplo `SV_QUINCENAL_BPO` (10–24 / 25–9) con 2026, **no**
+  predeterminado.
+* El ciclo de un empleado es el predeterminado de su país y frecuencia de pago.
+
+### React
+
+* Pestaña **Horario** del expediente: horario principal por día (según su AP), asignaciones adicionales vigentes,
+  historial por AP, botones «Nueva AP de cambio de horario» y «Asignación adicional», y la semana del empleado por
+  fecha de ocurrencia.
+* Menú **Horarios y tiempo**:
+  * Horas teóricas vs reales: por rango libre o por corte, con filtros, tolerancia, totales por empleado y CSV
+    (cada fila muestra la o las AP de horario de origen).
+  * Ciclos de pago y cortes: por año y frecuencia; generar periodos, cerrar y reabrir.
+* **Desglose diario** (`/scheduling/employees/:ID/days/:fecha`, Fase 10): toda fecha de ocurrencia del reporte y de
+  la semana del expediente es un enlace. Muestra los bloques que aportan horas ese día (AP, principal o adicional,
+  fecha de turno, porción del día, almuerzo, nocturnas), el tiempo registrado, el corte, la nocturnidad, las reglas
+  de almuerzo y las AP con fecha efectiva ese día (base para auditoría).
+* **Registros de tiempo manuales: retirados** (Fase 10) por el riesgo de manipulación. La pantalla ya no existe y los
+  endpoints de escritura responden 403 (`SCHEDULING_MANUAL_TIME_ENTRY=false`). Los registros existentes se siguen
+  consultando; la tabla `sch_time_record` y el origen `WEB_TIMER` quedan listos para el futuro Web Timer interno.
+
+### API (`/api/v1/scheduling`)
+
+| Método | Ruta | Permiso |
+|--------|------|---------|
+| GET | `/catalogs/` · `/night-rules/` · `/lunch-rules/` · `/pay-cycles/?year=&frequency=` · `/employees/{ID}/assignments/` | schedules.view |
+| GET | `/employees/{ID}/days/{AAAA-MM-DD}/` (desglose de una fecha de ocurrencia) | schedules.view |
+| POST | `/schedule-preview/` `{schedule, country, effective_date}` | schedules.view |
+| GET | `/employees/{ID}/timeline/?from=&to=` | schedules.view |
+| GET | `/time-records/` (consulta) | schedules.view |
+| POST · DELETE | `/time-records/` · `/time-records/{pk}/` · `/time-records/upload/` — **403** mientras la carga manual esté retirada | schedules.manage |
+| GET | `/report/?from=&to=` o `?period=&basis=cutoff\|period`, `country`, `flag`, `tolerance`, `search`, `export=csv` | schedules.view |
+| POST | `/pay-cycles/{code}/generate/` `{year}` · `/pay-periods/{id}/close/` · `/reopen/` | payroll.manage |
+
+Para Power BI / SQL: `dbo.vw_SchTimeByOccurrenceDate` (tiempo real por fecha de ocurrencia, con turno de origen,
+recargo y corte), `dbo.vw_SchScheduleAssignment` (horario vigente con el folio de su AP), `dbo.vw_SchScheduleDay`
+(una fila por **bloque** de cada día, con inicio, fin, almuerzo, minutos diurnos / nocturnos y tipo de asignación),
+`dbo.vw_SchPayPeriod` y `dbo.vw_SchLunchRule`.
+Las horas **teóricas por día calendario** las calcula el motor (endpoint `/report/` y su CSV), porque un turno que
+cruza la medianoche reparte sus horas entre dos fechas.
+
+## Acciones de Personal (Fase 9)
+
+App `apps/personnel_actions` (tablas `pa_*`). Cada AP tiene **folio único** por prefijo y año
+(`APH-2026-000001`), **fecha efectiva**, empleado, **observaciones / justificación**, **estado de aprobación** y
+**firmas digitales** por rol.
+
+### Tipos parametrizables con EAV (`/admin/` › Acciones de personal › Tipos)
+
+* **Tipo**: categoría, prefijo del folio, permisos para verla / crearla (p. ej. el ajuste salarial exige permisos de
+  planilla, así que WFM no lo ve), opción «quien envía firma el primer paso» y opción «firmantes distintos».
+* **Efecto al aprobarse**:
+  * `SCHEDULE`: aplica el horario desde la fecha efectiva.
+  * `SALARY`: actualiza el salario base. Si la fecha es futura, lo aplica `python manage.py apply_due_personnel_actions`
+    (prográmelo a diario).
+  * `NONE`: solo registro.
+* **Campos (EAV)**: texto, texto largo, entero, decimal, fecha, sí/no, lista de opciones y **horario semanal**, con
+  obligatoriedad, rangos y ayuda. Los valores se guardan en `pa_action_value`, en la columna que corresponde a su tipo.
+* **Cadena de firmas**: pasos ordenados, cada uno con el rol que firma (jerarquía por roles). El Administrador puede
+  firmar cualquier paso.
+
+Tipos sembrados:
+
+| Tipo | Folio | Firmas |
+|------|-------|--------|
+| Primera AP de asignación de horario (fundacional) | APH | RRHH |
+| Cambio de horario (motivo + horario) | APH | WFM → RRHH |
+| Ajuste salarial (tipo + nuevo salario) | APS | RRHH → Administración |
+
+### Flujo y firmas digitales
+
+`Borrador → En aprobación → Aprobada | Rechazada`; un borrador o una AP en aprobación también se puede **anular**,
+con motivo.
+
+* Al enviar la AP se **sella** su contenido (SHA-256 de tipo, empleado, fecha, justificación y valores). Desde ahí no
+  cambia: los triggers **50051** (valores) y **50052** (encabezado y estados resueltos) lo impiden.
+* Cada firma registra quién, con qué rol, la decisión, la hora y un **HMAC-SHA256**. El HMAC usa una clave del
+  servidor y cubre el folio, el paso, el firmante y el sello del contenido. El detalle verifica la integridad y
+  avisa si algo se alteró. Las firmas son inmutables (trigger **50050**).
+* Rechazar exige un comentario. Una AP aprobada no se edita: se corrige con otra AP.
+
+### Primera AP de asignación de horario (alta)
+
+* El alta, por formulario o por carga masiva (columna `schedule`), **exige el horario**. En la misma transacción
+  se crea la AP fundacional con fecha efectiva = fecha de ingreso y se envía a firma.
+* Con la cadena sembrada, RRHH o el Administrador que da el alta firma el único paso, así que la AP queda aprobada y
+  el horario vigente.
+* Si falta el horario, no se crea el empleado.
+* Los empleados creados antes de la Fase 9 aparecen en «sin Primera AP» (bandeja y pestaña Horario) para
+  regularizarlos. Un cambio de horario exige que exista la AP fundacional.
+
+### API (`/api/v1/personnel-actions`)
+
+| Método | Ruta | Permiso |
+|--------|------|---------|
+| GET | `/types/` · `/` (`status`, `type`, `employee`, `search`, `pending_for_me=1`) · `/{folio}/` · `/employees/{ID}/` · `/missing-initial/` | actions.view (+ permiso del tipo) |
+| POST | `/` · `/validate/` `{action_type, employee_code, effective_date, justification, values, submit}` · `/{folio}/submit/` · `/{folio}/cancel/` | actions.create (+ permiso del tipo) |
+| PATCH | `/{folio}/` (solo borradores) | actions.create |
+| POST | `/{folio}/sign/` `{decision: APPROVED\|REJECTED, comment}` | rol del paso pendiente |
+| POST | `/schedule-preview/` `{schedule, country \| employee_code, effective_date}` | actions.view |
+
+React: menú **Acciones de personal** (bandeja con «pendientes de mi firma», nueva AP con formulario dinámico EAV y
+editor de horario por día, detalle con la cadena de firmas), pestaña **Acciones de personal** del expediente y
+sección **Primera AP de asignación de horario** en el alta. Vista SQL: `dbo.vw_PersonnelAction`.
+
+## Correcciones BPO (Fase 10)
+
+### Varios bloques y varias AP el mismo día
+
+* Un día del horario puede tener hasta **4 bloques** (turno partido 08:00–12:00 + 14:00–18:00). En el JSON el día es
+  una lista de bloques; un objeto solo sigue valiendo como un bloque. Notación compacta para cargas masivas:
+  `L-V 08:00-12:00 + 14:00-18:00; S 08:00-12:00`.
+* Además del horario **principal**, un empleado puede tener **asignaciones adicionales** (doble asignación, refuerzo,
+  otra campaña) con la AP «Asignación adicional de horario» (`AP_HORARIO_ADICIONAL`, firmas WFM → RRHH, campo
+  obligatorio `vigente_hasta`). Conviven con el principal y sus horas programadas se **suman** por fecha de
+  ocurrencia (reporte, desglose, CSV). Un cambio de horario reemplaza solo el principal.
+* Ningún par de bloques puede pedir las mismas horas: se valida al elaborar y al aprobar la AP (código
+  `schedule_collision`). SQL Server sigue impidiendo dos horarios **principales** en fechas que se cruzan (50040), y
+  una asignación adicional siempre tiene fecha de fin (`ck_sch_assign_additional_end`).
+* En `/admin/` › Tipos de AP, el campo «asignación de horario» (principal / adicional) define el comportamiento.
+
+### Almuerzo sin valor fijo: reglas por país (`/admin/` › Reglas de almuerzo)
+
+* `lunch_minutes` es opcional (0 si se omite) en cada bloque.
+* `sch_lunch_rule`: país, **jornada continua mínima** (minutos de un bloque), **almuerzo mínimo** y aplicación
+  «Advertencia» (no bloquea) u «Obligatorio» (bloquea la AP), con vigencia. Admite tramos (≥ 5 h → 30 min,
+  ≥ 9 h → 60 min): aplica el de umbral más alto que alcanza el bloque. Un turno partido no necesita almuerzo si
+  ningún bloque llega al umbral. Trigger **50047**: un umbral por país y fechas.
+* Semilla de referencia SV: bloques de 6 h o más → 30 min, en modo advertencia. **Valide el umbral y la duración con
+  Legal / Planilla.**
+
 ## Fuera de alcance (por ahora)
 * JWT / SSO (la API usa sesión + CSRF; el SPA no maneja tokens).
 * Restablecimiento de contraseña por correo (no hay servicio de correo; el reseteo lo hace RRHH/Administración).
@@ -364,4 +737,13 @@ Migraciones de la Fase 5: `database/scripts/095_hcm_digital_file_media.sql` (con
 * Edición de plantillas desde React (se administran en `/admin/`) y procesamiento asíncrono de lotes
   (hoy síncrono, límite 5000 filas).
 * Documentos en PDF (la Fase 5 acepta solo imágenes PNG/JPG/JPEG) y antivirus en las cargas.
-* Reportes y Power BI; CRUD de negocio, motor de planilla y procesador de ingesta.
+* Pantalla React para administrar catálogos (clientes, marcas, líneas, bancos, herramientas y tipos de ID): hoy en
+  `/admin/` (rol Administrador).
+  No existe un rol «QA»: los reportes de roster los consultan Administrador, RRHH y WFM.
+* Reportes y Power BI; motor de planilla (montos, horas extra) y procesador de ingesta WFM (`wfm.*`, Fase 1).
+  La Fase 8 calcula horas, nocturnidad y su equivalente de recargo, pero no montos.
+* Programación exacta del almuerzo y descansos (responsabilidad operativa de WFM) y feriados.
+* AP masivas (un cambio de horario para muchos colaboradores a la vez) y jerarquía por jefe inmediato (hoy las firmas
+  se asignan por rol).
+* Web Timer interno (marcación) y terminar antes de tiempo una asignación adicional (hoy rige hasta su
+  `vigente_hasta`; para extenderla se elabora otra AP adicional).

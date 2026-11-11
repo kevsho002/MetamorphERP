@@ -12,9 +12,10 @@ class Employee(AuditColumns):
     """hcm.Employee ("Empleados"). EmployeeCode lo genera core.usp_GenerateEmployeeCode."""
 
     class Status(models.TextChoices):
+        # Ciclo de vida oficial (Fase 7): Activo, Inactivo y Terminado (script 096).
         ACTIVE = "ACTIVE", "Activo"
-        SUSPENDED = "SUSPENDED", "Suspendido"
-        TERMINATED = "TERMINATED", "Retirado"
+        INACTIVE = "INACTIVE", "Inactivo"
+        TERMINATED = "TERMINATED", "Terminado"
 
     class PayFrequency(models.TextChoices):
         MONTHLY = "MONTHLY", "Mensual"

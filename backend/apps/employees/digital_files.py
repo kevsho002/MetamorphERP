@@ -237,6 +237,8 @@ def build_dossier(employee: Employee, employee_data: dict, *, user, as_of: date 
             "recommended": f.recommended,
             "help": f.help,
             "value": value,
+            "display": f.display(value) if value not in (None, "") and f.choice_labels else None,
+            "mask": list(f.mask) or None,
             "restricted": is_restricted,
             "missing": not is_restricted and f.required and is_blank(value),
         }

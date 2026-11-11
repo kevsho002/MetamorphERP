@@ -4,10 +4,12 @@ import { usersApi } from "../../../services/usersApi.js";
 import { employeesApi } from "../api.js";
 import { useRoles } from "../hooks/useRoles.js";
 import { formatDateTime } from "../lib/format.js";
+import AccountSearch from "./AccountSearch.jsx";
 import TemporaryPassword from "./TemporaryPassword.jsx";
 
 /**
- * Cuenta Metamorph vinculada al empleado (FK por ID corporativo): crearla si no existe,
+ * Cuenta Metamorph vinculada al empleado (FK por ID corporativo): crearla si no existe (o, Fase 7,
+ * vincular una cuenta existente sin empleado),
  * cambiar rol, resetear contraseña y activar/desactivar. Toda la gestión de cuentas
  * ocurre aquí (no en /admin/), con las reglas RBAC del backend.
  */
@@ -16,6 +18,7 @@ export default function UserAccountPanel({ employee, onChanged }) {
   const { assignable } = useRoles();
   const account = employee.user_account;
   const [form, setForm] = useState({ role: "EMPLOYEE", username: "" });
+  const [linkUser, setLinkUser] = useState(null); // Fase 7: cuenta existente elegida para vincular
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
@@ -44,6 +47,14 @@ export default function UserAccountPanel({ employee, onChanged }) {
         username: form.username || undefined,
       });
       setSecret({ username: body.user_account.username, password: body.user_account.temporary_password });
+      setMessage([body.feedback, ...(body.warnings ?? []).map((w) => w.message)].join(" "));
+      onChanged();
+    });
+
+  const link = () =>
+    run("link", async () => {
+      const body = await employeesApi.linkUserAccount(employee.employee_code, linkUser.id);
+      setLinkUser(null);
       setMessage([body.feedback, ...(body.warnings ?? []).map((w) => w.message)].join(" "));
       onChanged();
     });
@@ -156,10 +167,12 @@ export default function UserAccountPanel({ employee, onChanged }) {
       ) : employee.has_user_account ? (
         <p className="muted">El empleado tiene una cuenta vinculada (su rol no permite ver el detalle).</p>
       ) : retired ? (
-        <p className="muted">El empleado está retirado: no se le crea acceso.</p>
-      ) : !hasPermission("users.create") ? (
+        <p className="muted">El empleado está terminado: no se le crea ni vincula acceso.</p>
+      ) : !hasPermission("users.create") && !hasPermission("users.update") ? (
         <p className="muted">El empleado no tiene cuenta de usuario.</p>
       ) : (
+        <>
+        {hasPermission("users.create") && (
         <div className="form-section">
           <p>
             El empleado no tiene cuenta. ¿Desea crear un perfil de usuario Metamorph vinculado a <code>{employee.employee_code}</code>?
@@ -196,6 +209,22 @@ export default function UserAccountPanel({ employee, onChanged }) {
             {busy === "create" ? "Creando…" : "Crear cuenta vinculada"}
           </button>
         </div>
+        )}
+        {hasPermission("users.update") && (
+          <div className="form-section">
+            <p>
+              ¿Ya tiene una cuenta Metamorph? Vincúlela a <code>{employee.employee_code}</code>: conserva su usuario, contraseña y
+              rol, y toma el centro de costos del empleado.
+            </p>
+            <div className="form-grid">
+              <AccountSearch id="link-account-search" value={linkUser} onChange={setLinkUser} disabled={Boolean(busy)} />
+            </div>
+            <button type="button" className="button button--ghost" onClick={link} disabled={Boolean(busy) || !linkUser}>
+              {busy === "link" ? "Vinculando…" : "Vincular cuenta existente"}
+            </button>
+          </div>
+        )}
+        </>
       )}
     </section>
   );

@@ -138,6 +138,11 @@ class AuditEvent(models.Model):
         EMPLOYEES = "EMPLOYEES", "Empleados"
         DOCUMENTS = "DOCUMENTS", "Expediente digital"
         IMPORTS = "IMPORTS", "Cargas masivas"
+        ROSTER = "ROSTER", "Roster operativo"
+        CATALOGS = "CATALOGS", "Catálogos operativos"
+        GENERAL_IDS = "GIDS", "General IDs"
+        SCHEDULING = "SCHED", "Horarios, tiempo y cortes"
+        PERSONNEL_ACTIONS = "PA", "Acciones de personal"
         SYSTEM = "SYSTEM", "Parámetros del sistema"
 
     occurred_at = models.DateTimeField("fecha y hora", default=timezone.now, db_index=True)

@@ -211,6 +211,11 @@ export default function EmployeeImportPage() {
             <h2 className="section-title">Consejos</h2>
             <ul className="tips muted small">
               <li>Deje vacía la columna del ID corporativo: el sistema lo genera.</li>
+              <li>
+                Columna <code>schedule</code> (obligatoria): horario de la Primera AP de asignación de horario, p. ej.{" "}
+                <code>L-V 08:00-17:00 60; S 08:00-12:00</code> (días L M X J V S D, entrada-salida y minutos de almuerzo). Cada
+                alta crea su AP fundacional con fecha efectiva = fecha de ingreso.
+              </li>
               <li>En Excel, dé formato de texto a documentos con ceros a la izquierda.</li>
               <li>Fechas en AAAA-MM-DD o DD/MM/AAAA.</li>
               <li>Encabezados en español o inglés (p. ej. «pais» o «country»).</li>

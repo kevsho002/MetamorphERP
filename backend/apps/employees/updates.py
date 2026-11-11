@@ -6,7 +6,7 @@ Flujo:
 2. El resultado se valida con `validate_employee_payload` contra la plantilla del
    país vigente a la fecha de ingreso (excluyendo al propio empleado de los
    controles de duplicados).
-3. Estado laboral y fecha de retiro se validan aparte (no pertenecen a la plantilla).
+3. Estado laboral y fecha de terminación se validan aparte (no pertenecen a la plantilla).
 4. Si todo es válido se guarda: hcm.Employee + upsert de valores EAV.
 
 Reglas fijas: el país y el ID corporativo no se editan (el ID depende del país);
@@ -39,9 +39,11 @@ audit = logging.getLogger("apps.employees.audit")
 STATUS_FIELDS = ("employment_status", "termination_date")
 STATUS_SYNONYMS = {
     "ACTIVO": Employee.Status.ACTIVE,
-    "SUSPENDIDO": Employee.Status.SUSPENDED,
+    "INACTIVO": Employee.Status.INACTIVE,
+    "SUSPENDIDO": Employee.Status.INACTIVE,
+    "SUSPENDED": Employee.Status.INACTIVE,
+    "TERMINADO": Employee.Status.TERMINATED,
     "RETIRADO": Employee.Status.TERMINATED,
-    "INACTIVO": Employee.Status.TERMINATED,
 }
 _IGNORED_KEYS = {"employee_code", "row_version", "full_name", "country_name", "currency", "has_user_account"}
 
@@ -105,7 +107,7 @@ def _merge(employee: Employee, payload: dict, can_see_salary: bool) -> tuple[dic
                 problems.append((
                     "country_immutable",
                     f"El país no se puede cambiar ({employee.country.country_name}): el ID corporativo "
-                    f"{employee.employee_code} pertenece a ese país. Para un traslado, registre el retiro y cree un alta nueva.",
+                    f"{employee.employee_code} pertenece a ese país. Para un traslado, registre la terminación y cree un alta nueva.",
                     "country",
                 ))
             continue
@@ -137,35 +139,35 @@ def _validate_status(employee: Employee, merged: dict, row: ValidatedRow) -> dic
         try:
             termination = parse_date(raw_termination)
         except FieldValueError as exc:
-            row.error(exc.code, f"«Fecha de retiro»: {exc.message}", "termination_date")
+            row.error(exc.code, f"«Fecha de terminación»: {exc.message}", "termination_date")
             return {}
     hire = row.core.get("hire_date")
     if status == Employee.Status.TERMINATED and termination is None and not row.has_field_error("termination_date"):
-        row.error("required", "Para marcar al empleado como Retirado indique la «Fecha de retiro».", "termination_date")
+        row.error("required", "Para marcar al empleado como Terminado indique la «Fecha de terminación».", "termination_date")
     elif status != Employee.Status.TERMINATED and termination is not None:
         row.error(
             "invalid_date",
-            "Solo un empleado con estado «Retirado» puede tener fecha de retiro: borre la fecha o cambie el estado.",
+            "Solo un empleado con estado «Terminado» puede tener fecha de terminación: borre la fecha o cambie el estado.",
             "termination_date",
         )
     elif termination and hire and termination < hire:
         row.error(
             "invalid_date",
-            f"La fecha de retiro {termination:%d/%m/%Y} es anterior a la fecha de ingreso {hire:%d/%m/%Y}.",
+            f"La fecha de terminación {termination:%d/%m/%Y} es anterior a la fecha de ingreso {hire:%d/%m/%Y}.",
             "termination_date",
         )
     account = getattr(employee, "user_account", None) if hasattr(employee, "user_account") else None
     if status == Employee.Status.TERMINATED and employee.employment_status != status and account is not None and account.is_active:
         row.warn(
             "linked_account",
-            f"Al guardar el retiro se desactivará la cuenta de usuario vinculada «{account.username}» y se cerrarán sus sesiones.",
+            f"Al guardar la terminación se desactivará la cuenta de usuario vinculada «{account.username}» y se cerrarán sus sesiones.",
             "employment_status",
         )
     return {"employment_status": status, "termination_date": termination}
 
 
 def _deactivate_linked_account(employee: Employee, user, row: ValidatedRow, request=None) -> None:
-    """Retiro -> la cuenta vinculada deja de tener acceso (vínculo limpio empleado <-> usuario)."""
+    """Terminación -> la cuenta vinculada deja de tener acceso (vínculo limpio empleado <-> usuario)."""
     from apps.accounts import services as account_services
     from apps.accounts.roles import can_manage_role
 
@@ -185,7 +187,7 @@ def _deactivate_linked_account(employee: Employee, user, row: ValidatedRow, requ
         return
     try:
         with transaction.atomic():
-            account_services.set_active(user, account, active=False, request=request, reason="empleado retirado")
+            account_services.set_active(user, account, active=False, request=request, reason="empleado terminado")
     except Exception as exc:  # p. ej. último administrador activo
         detail = getattr(exc, "detail", None) or str(exc)
         if isinstance(detail, dict):
@@ -212,7 +214,7 @@ def _changes(employee: Employee, row: ValidatedRow, status_values: dict, before:
     if status_values.get("employment_status") != employee.employment_status:
         changed.append("Estado laboral")
     if status_values.get("termination_date") != employee.termination_date:
-        changed.append("Fecha de retiro")
+        changed.append("Fecha de terminación")
     return changed
 
 

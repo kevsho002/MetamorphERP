@@ -223,7 +223,7 @@ def plan_linked_account(
         if CustomUser.objects.filter(employee_id=employee.employee_code).exists():
             plan.errors.append(("user_account", "El empleado ya tiene una cuenta de usuario vinculada.", "already_linked"))
         if employee.employment_status == employee.Status.TERMINATED:
-            plan.errors.append(("user_account", "El empleado está retirado: no se le crea acceso.", "terminated"))
+            plan.errors.append(("user_account", "El empleado está terminado: no se le crea acceso.", "terminated"))
     requested = (username or "").strip()
     if requested:
         if not USERNAME_RE.match(requested):
@@ -268,3 +268,91 @@ def create_linked_account(actor: CustomUser, employee, plan: AccountPlan, reques
         details={"role": user.role, "employee_code": employee.employee_code, "linked": True},
     )
     return user, temporary
+
+
+# --------------------------------------------------------------------- vincular una cuenta EXISTENTE (Fase 7)
+@dataclass
+class LinkPlan:
+    """Validación de «vincular el usuario X al empleado Y» (antes de escribir nada)."""
+
+    user: CustomUser | None = None
+    errors: list[tuple[str, str, str]] = field(default_factory=list)  # (campo, mensaje, código)
+    warnings: list[tuple[str, str, str]] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+    def preview(self) -> dict | None:
+        if self.user is None:
+            return None
+        return {
+            "id": self.user.pk, "username": self.user.username, "role": self.user.role,
+            "role_label": self.user.get_role_display(), "is_active": self.user.is_active, "linked": True,
+        }
+
+
+def link_candidates(actor: CustomUser):
+    """Cuentas sin empleado vinculado que el actor puede administrar (para buscarlas en la interfaz)."""
+    qs = CustomUser.objects.filter(employee__isnull=True).order_by("username")
+    manageable = [r for r in Role.values if can_manage_role(actor.effective_role, r)]
+    qs = qs.filter(role__in=manageable)
+    if not actor.is_superuser:
+        qs = qs.filter(is_superuser=False)
+    return qs
+
+
+def plan_link_existing(actor: CustomUser, *, user_id, employee=None) -> LinkPlan:
+    """Reglas: el actor puede editar cuentas y administrar el rol de la cuenta; la cuenta no tiene
+    empleado; el empleado no tiene cuenta y no está Terminado. `employee=None` = alta en curso."""
+    plan = LinkPlan()
+    if Perm.USERS_UPDATE not in user_permissions(actor):
+        plan.errors.append(("user_account", "Su rol no puede vincular cuentas de usuario.", "forbidden"))
+        return plan
+    try:
+        user = CustomUser.objects.select_related("cost_center").get(pk=int(user_id))
+    except (TypeError, ValueError, CustomUser.DoesNotExist):
+        plan.errors.append(("user_account.user_id", "Seleccione una cuenta de usuario existente.", "unknown_user"))
+        return plan
+    plan.user = user
+    if user.employee_id:
+        plan.errors.append(
+            ("user_account.user_id", f"La cuenta «{user.username}» ya está vinculada al empleado {user.employee_id}.", "user_linked")
+        )
+    if user.is_superuser and not actor.is_superuser:
+        plan.errors.append(("user_account.user_id", "Solo un superusuario puede vincular otra cuenta de superusuario.", "forbidden"))
+    elif not can_manage_role(actor.effective_role, user.effective_role):
+        plan.errors.append(
+            ("user_account.user_id", f"Su rol no administra cuentas con rol {Role(user.effective_role).label}.", "role_not_allowed")
+        )
+    if employee is not None:
+        if CustomUser.objects.filter(employee_id=employee.employee_code).exists():
+            plan.errors.append(("user_account", "El empleado ya tiene una cuenta de usuario vinculada.", "already_linked"))
+        if employee.employment_status == employee.Status.TERMINATED:
+            plan.errors.append(("user_account", "El empleado está terminado: no se le vincula acceso.", "terminated"))
+    if not user.is_active:
+        plan.warnings.append(
+            ("user_account.user_id", f"La cuenta «{user.username}» está desactivada: reactívela para que pueda ingresar.", "inactive_user")
+        )
+    return plan
+
+
+@transaction.atomic
+def link_existing_account(actor: CustomUser, employee, plan: LinkPlan, request=None) -> CustomUser:
+    """Enlaza por FK (ID corporativo) una cuenta ya existente con el empleado y alinea su centro de costos."""
+    if not plan.ok or plan.user is None:
+        raise ValueError("link_existing_account requiere un plan sin errores")
+    user = CustomUser.objects.select_for_update().get(pk=plan.user.pk)
+    if user.employee_id:  # carrera: alguien la vinculó entre la validación y la escritura
+        raise Conflict({"detail": f"La cuenta «{user.username}» acaba de ser vinculada a otro empleado."})
+    previous_cc = user.cost_center_id
+    user.employee = employee
+    user.cost_center = employee.cost_center
+    user.save(update_fields=["employee", "cost_center", "updated_at"])
+    record(
+        "user_linked", Category.USERS,
+        f"Cuenta «{user.username}» ({Role(user.role).label}) vinculada al empleado {employee.employee_code}.",
+        request=request, actor=actor, target=user,
+        details={"employee_code": employee.employee_code, "cost_center_from": previous_cc, "cost_center_to": user.cost_center_id},
+    )
+    return user

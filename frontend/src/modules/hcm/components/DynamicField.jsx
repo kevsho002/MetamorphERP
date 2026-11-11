@@ -1,4 +1,5 @@
 import { patternFor } from "../lib/formSpec.js";
+import { formatWithMask, isNumericMask, maskPlaceholder, maxMaskLength } from "../lib/mask.js";
 
 const INPUT_TYPES = { DATE: "date", EMAIL: "email" };
 
@@ -6,6 +7,8 @@ const INPUT_TYPES = { DATE: "date", EMAIL: "email" };
  * Renderiza UN campo de la plantilla según su data_type:
  * STRING/EMAIL/DATE -> input; DECIMAL/INTEGER -> input numérico; CHOICE/choices -> select;
  * BOOLEAN -> Sí/No. Muestra obligatorio/recomendado, ayuda, ejemplo y errores.
+ * Fase 7: `mask` de la plantilla formatea mientras se escribe (sin teclear guiones) y los campos con
+ * `catalog` (bancos) se muestran como lista desplegable con los nombres del catálogo.
  */
 export default function DynamicField({
   field,
@@ -24,6 +27,7 @@ export default function DynamicField({
   const message = error || serverError;
   if (message) describedBy.push(`${id}-error`);
   const rule = patternFor(field, values);
+  const mask = rule?.mask;
   const hint = field.help || (rule?.example ? `Ejemplo: ${rule.example}` : null);
   if (hint) describedBy.push(`${id}-hint`);
 
@@ -37,7 +41,9 @@ export default function DynamicField({
     onBlur: () => onBlur?.(field.key),
   };
   const set = (v) => onChange(field.key, v);
-  const choiceOptions = options ?? field.choices?.map((c) => ({ value: c, label: c }));
+  // Catálogos (p. ej. bancos): solo opciones activas, más el valor actual si quedó inactivo.
+  const catalogOptions = field.options?.filter((o) => o.is_active || o.value === value);
+  const choiceOptions = options ?? catalogOptions ?? field.choices?.map((c) => ({ value: c, label: c }));
 
   let control;
   if (restricted) {
@@ -65,16 +71,20 @@ export default function DynamicField({
     );
   } else {
     const numeric = field.data_type === "DECIMAL" || field.data_type === "INTEGER";
+    const masked = Boolean(mask) && !INPUT_TYPES[field.data_type];
     control = (
       <input
         {...common}
         type={INPUT_TYPES[field.data_type] ?? "text"}
-        inputMode={field.data_type === "DECIMAL" ? "decimal" : field.data_type === "INTEGER" ? "numeric" : undefined}
-        value={value ?? ""}
-        maxLength={field.max_length ?? undefined}
-        placeholder={rule?.example ?? (numeric ? "0.00" : undefined)}
+        inputMode={
+          field.data_type === "DECIMAL" ? "decimal" : field.data_type === "INTEGER" || (masked && isNumericMask(mask)) ? "numeric" : undefined
+        }
+        value={masked ? formatWithMask(mask, value) : value ?? ""}
+        maxLength={(masked ? maxMaskLength(mask) : null) ?? field.max_length ?? undefined}
+        placeholder={rule?.example ?? (masked ? maskPlaceholder(mask) : numeric ? "0.00" : undefined)}
         autoComplete="off"
-        onChange={(e) => set(e.target.value)}
+        onChange={(e) => set(masked ? formatWithMask(mask, e.target.value) : e.target.value)}
+        data-mask={masked ? [].concat(mask).join(" | ") : undefined}
         className={field.transform === "upper" ? "input--upper" : undefined}
       />
     );

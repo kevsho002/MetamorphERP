@@ -152,6 +152,8 @@ class UserViewSet(
             qs = qs.filter(role=role.upper())
         if (is_active := params.get("is_active")) is not None:
             qs = qs.filter(is_active=is_active.lower() in {"1", "true", "yes"})
+        if (linked := params.get("linked")) is not None:  # Fase 7: cuentas con / sin empleado vinculado
+            qs = qs.filter(employee__isnull=linked.lower() not in {"1", "true", "yes"})
         if (cost_center := params.get("cost_center", "")).isdigit():
             qs = qs.filter(cost_center_id=int(cost_center))
         return qs

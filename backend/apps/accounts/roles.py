@@ -29,6 +29,14 @@ class Perm:
     WFM_MANAGE = "wfm.manage"
     PAYROLL_VIEW = "payroll.view"
     PAYROLL_MANAGE = "payroll.manage"
+    ROSTER_VIEW = "roster.view"  # Fase 6: roster operativo (clientes, marcas, líneas, waves)
+    ROSTER_MANAGE = "roster.manage"
+    GENERAL_IDS_VIEW = "general_ids.view"  # Fase 7: identificadores para reportería y JOINs (ACD ID, Payroll Tool ID…)
+    GENERAL_IDS_MANAGE = "general_ids.manage"
+    SCHEDULES_VIEW = "schedules.view"  # Fase 8: turnos, horarios por fechas efectivas, tiempo y horas teóricas vs reales
+    SCHEDULES_MANAGE = "schedules.manage"
+    ACTIONS_VIEW = "actions.view"  # Fase 9: Acciones de Personal (AP); firmar depende del ROL de cada paso
+    ACTIONS_CREATE = "actions.create"
     SELF_SERVICE = "self.view"
     SYSTEM_STATUS = "system.status"
 
@@ -52,14 +60,31 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             Perm.WFM_MANAGE,
             Perm.PAYROLL_VIEW,
             Perm.PAYROLL_MANAGE,
+            Perm.ROSTER_VIEW,
+            Perm.ROSTER_MANAGE,
+            Perm.GENERAL_IDS_VIEW,
+            Perm.GENERAL_IDS_MANAGE,
+            Perm.SCHEDULES_VIEW,
+            Perm.SCHEDULES_MANAGE,
+            Perm.ACTIONS_VIEW,
+            Perm.ACTIONS_CREATE,
             Perm.SELF_SERVICE,
             Perm.SYSTEM_STATUS,
         }
     ),
     Role.HR: frozenset(
-        _USER_ADMIN | {Perm.HCM_VIEW, Perm.HCM_MANAGE, Perm.WFM_VIEW, Perm.PAYROLL_VIEW, Perm.PAYROLL_MANAGE, Perm.SELF_SERVICE}
+        _USER_ADMIN
+        | {
+            Perm.HCM_VIEW, Perm.HCM_MANAGE, Perm.WFM_VIEW, Perm.PAYROLL_VIEW, Perm.PAYROLL_MANAGE,
+            Perm.ROSTER_VIEW, Perm.ROSTER_MANAGE, Perm.GENERAL_IDS_VIEW, Perm.GENERAL_IDS_MANAGE,
+            Perm.SCHEDULES_VIEW, Perm.SCHEDULES_MANAGE, Perm.ACTIONS_VIEW, Perm.ACTIONS_CREATE, Perm.SELF_SERVICE,
+        }
     ),
-    Role.WFM: frozenset({Perm.HCM_VIEW, Perm.WFM_VIEW, Perm.WFM_MANAGE, Perm.SELF_SERVICE}),
+    Role.WFM: frozenset({
+        Perm.HCM_VIEW, Perm.WFM_VIEW, Perm.WFM_MANAGE, Perm.ROSTER_VIEW, Perm.ROSTER_MANAGE,
+        Perm.GENERAL_IDS_VIEW, Perm.GENERAL_IDS_MANAGE, Perm.SCHEDULES_VIEW, Perm.SCHEDULES_MANAGE,
+        Perm.ACTIONS_VIEW, Perm.ACTIONS_CREATE, Perm.SELF_SERVICE,
+    }),
     Role.EMPLOYEE: frozenset({Perm.SELF_SERVICE}),
 }
 

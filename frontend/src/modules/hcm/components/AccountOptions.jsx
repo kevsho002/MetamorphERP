@@ -1,14 +1,24 @@
+import { useAuth } from "../../../auth/AuthContext.jsx";
 import { useRoles } from "../hooks/useRoles.js";
+import AccountSearch from "./AccountSearch.jsx";
 
 /**
  * Bloque del alta de empleado: «¿Desea crear un perfil de usuario Metamorph vinculado a este empleado?».
- * value: { create, role, username }. La cuenta se crea en la MISMA transacción que el empleado.
+ * value: { create, mode: "create" | "link", role, username, user }.
+ *  - create: cuenta NUEVA con contraseña temporal (requiere users.create).
+ *  - link (Fase 7): vincula una cuenta EXISTENTE sin empleado (requiere users.update); conserva su contraseña y rol.
+ * En ambos casos todo ocurre en la MISMA transacción que el alta del empleado.
  */
 export default function AccountOptions({ value, onChange, preview, serverErrors = {}, disabled }) {
+  const { hasPermission } = useAuth();
   const { assignable } = useRoles();
+  const canCreate = hasPermission("users.create");
+  const canLink = hasPermission("users.update");
   const set = (patch) => onChange({ ...value, ...patch });
+  const mode = value.mode === "link" && canLink ? "link" : canCreate ? "create" : "link";
   const usernameError = serverErrors["user_account.username"];
   const roleError = serverErrors["user_account.role"];
+  const userError = serverErrors["user_account.user_id"];
   const generalError = serverErrors.user_account;
 
   return (
@@ -19,19 +29,38 @@ export default function AccountOptions({ value, onChange, preview, serverErrors 
           type="checkbox"
           name="user_account.create"
           checked={value.create}
-          onChange={(e) => set({ create: e.target.checked })}
+          onChange={(e) => set({ create: e.target.checked, mode })}
           disabled={disabled}
         />
         <span>
           <strong>¿Desea crear un perfil de usuario Metamorph vinculado a este empleado?</strong>
           <small className="muted">
-            La cuenta queda enlazada a su ID corporativo y centro de costos; recibirá una contraseña temporal que deberá
-            cambiar en su primer ingreso. Si algo falla, no se crea ni el empleado ni la cuenta.
+            Puede crear una cuenta nueva o vincular una cuenta que ya existe en el sistema. La cuenta queda enlazada a su
+            ID corporativo y centro de costos. Si algo falla, no se registra ni el empleado ni el vínculo.
           </small>
         </span>
       </label>
 
-      {value.create && (
+      {value.create && canCreate && canLink && (
+        <div className="segmented" role="radiogroup" aria-label="Tipo de vínculo">
+          <label className={`segmented__item${mode === "create" ? " segmented__item--active" : ""}`}>
+            <input type="radio" name="user_account.mode" value="create" checked={mode === "create"} onChange={() => set({ mode: "create" })} disabled={disabled} />
+            Crear una cuenta nueva
+          </label>
+          <label className={`segmented__item${mode === "link" ? " segmented__item--active" : ""}`}>
+            <input type="radio" name="user_account.mode" value="link" checked={mode === "link"} onChange={() => set({ mode: "link" })} disabled={disabled} />
+            Vincular una cuenta existente
+          </label>
+        </div>
+      )}
+
+      {value.create && mode === "link" && (
+        <div className="form-grid">
+          <AccountSearch value={value.user} onChange={(user) => set({ user, mode: "link" })} error={userError} disabled={disabled} />
+        </div>
+      )}
+
+      {value.create && mode === "create" && (
         <div className="form-grid">
           <div className="field">
             <label htmlFor="account-role" className="field__label">
@@ -79,7 +108,7 @@ export default function AccountOptions({ value, onChange, preview, serverErrors 
               </small>
             ) : (
               <small className="field__hint">
-                {preview?.username
+                {preview?.username && !preview.linked
                   ? `Si lo deja vacío se usará «${preview.username}».`
                   : "Vacío = se genera nombre.apellido (use «Validar sin guardar» para verlo)."}
               </small>
@@ -94,4 +123,12 @@ export default function AccountOptions({ value, onChange, preview, serverErrors 
       )}
     </fieldset>
   );
+}
+
+/** Cuerpo `user_account` para la API según la opción elegida (o null si no se pidió cuenta). */
+export function accountPayload(value, { canCreate, canLink }) {
+  if (!value.create) return null;
+  const mode = value.mode === "link" && canLink ? "link" : canCreate ? "create" : "link";
+  if (mode === "link") return { mode: "link", user_id: value.user?.id ?? null };
+  return { create: true, role: value.role, username: value.username };
 }

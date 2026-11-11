@@ -2,7 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext.jsx";
 import { employeesApi } from "../api.js";
-import AccountOptions from "../components/AccountOptions.jsx";
+import AccountOptions, { accountPayload } from "../components/AccountOptions.jsx";
+import WeeklyScheduleEditor, { defaultSchedule, scheduleInput } from "../../personnelActions/components/WeeklyScheduleEditor.jsx";
 import DynamicField from "../components/DynamicField.jsx";
 import FeedbackPanel from "../components/Feedback.jsx";
 import TemplateInfo from "../components/TemplateInfo.jsx";
@@ -23,7 +24,7 @@ const FIXED_LABELS = {
   country: "País",
   hire_date: "Fecha de ingreso",
   employment_status: "Estado laboral",
-  termination_date: "Fecha de retiro",
+  termination_date: "Fecha de terminación",
   employee_code: "ID corporativo",
 };
 
@@ -55,9 +56,13 @@ function EmployeeForm({ code }) {
   const [requestError, setRequestError] = useState(null);
   const [created, setCreated] = useState(null);
   const [dirty, setDirty] = useState(false);
-  // Fase 5: cuenta Metamorph vinculada (solo en el alta y si el rol puede crear usuarios).
-  const canCreateAccount = !isEdit && hasPermission("users.create");
-  const [account, setAccount] = useState({ create: false, role: "EMPLOYEE", username: "" });
+  // Fase 5/7: cuenta Metamorph vinculada (solo en el alta): crear una nueva (users.create) o
+  // vincular una existente (users.update).
+  const accountPerms = { canCreate: hasPermission("users.create"), canLink: hasPermission("users.update") };
+  const canCreateAccount = !isEdit && (accountPerms.canCreate || accountPerms.canLink);
+  const [account, setAccount] = useState({ create: false, mode: "create", role: "EMPLOYEE", username: "", user: null });
+  // Fase 9: horario de la Primera AP de asignación de horario (obligatoria en el alta).
+  const [schedule, setSchedule] = useState(defaultSchedule);
   const formRef = useRef(null);
 
   // ----------------------------------------------------------- carga (edición)
@@ -117,11 +122,11 @@ function EmployeeForm({ code }) {
     if (!isEdit) return {};
     const errs = {};
     if (values.employment_status === "TERMINATED" && !values.termination_date) {
-      errs.termination_date = "Indique la fecha de retiro.";
+      errs.termination_date = "Indique la fecha de terminación.";
     } else if (values.employment_status !== "TERMINATED" && values.termination_date) {
-      errs.termination_date = "Solo un empleado «Retirado» puede tener fecha de retiro.";
+      errs.termination_date = "Solo un empleado «Terminado» puede tener fecha de terminación.";
     } else if (values.termination_date && values.hire_date && values.termination_date < values.hire_date) {
-      errs.termination_date = "La fecha de retiro es anterior a la fecha de ingreso.";
+      errs.termination_date = "La fecha de terminación es anterior a la fecha de ingreso.";
     }
     return errs;
   }, [isEdit, values]);
@@ -168,14 +173,17 @@ function EmployeeForm({ code }) {
             termination_date: values.termination_date || "",
             row_version: employee?.row_version,
           }
-        : canCreateAccount && account.create
-          ? { user_account: { create: true, role: account.role, username: account.username } }
-          : {},
+        : {
+            schedule: scheduleInput(schedule),
+            ...(canCreateAccount && account.create ? { user_account: accountPayload(account, accountPerms) } : {}),
+          },
     });
 
   const changeAccount = (next) => {
     setAccount(next);
-    setServerErrors(({ user_account: _a, "user_account.role": _r, "user_account.username": _u, ...rest }) => rest);
+    setServerErrors(
+      ({ user_account: _a, "user_account.role": _r, "user_account.username": _u, "user_account.user_id": _i, ...rest }) => rest,
+    );
     setDirty(true);
   };
 
@@ -297,7 +305,7 @@ function EmployeeForm({ code }) {
           </div>
         </div>
         <FeedbackPanel result={created} labels={labels} />
-        {created.user_account && (
+        {created.user_account?.temporary_password && (
           <TemporaryPassword username={created.user_account.username} password={created.user_account.temporary_password} />
         )}
         <div className="actions">
@@ -475,9 +483,9 @@ function EmployeeForm({ code }) {
             <DynamicField
               field={{
                 key: "termination_date",
-                label: "Fecha de retiro",
+                label: "Fecha de terminación",
                 data_type: "DATE",
-                help: "Obligatoria solo si el estado es «Retirado».",
+                help: "Obligatoria solo si el estado es «Terminado».",
               }}
               value={values.termination_date}
               values={values}
@@ -487,6 +495,30 @@ function EmployeeForm({ code }) {
               serverError={serverErrors.termination_date}
             />
           </div>
+        </fieldset>
+      )}
+
+      {/* ---------------------------------------------- Primera AP de horario (alta) */}
+      {template && !isEdit && (
+        <fieldset className="form-section">
+          <legend className="form-section__title">
+            Primera AP de asignación de horario<span className="field__req">*</span>
+          </legend>
+          <p className="muted small">
+            Ningún colaborador queda activo sin su AP fundacional de turno. Defina el horario de cada día; al dar de alta se crea
+            la AP con fecha efectiva = fecha de ingreso y se envía a firma (si su rol firma el primer paso, queda aprobada).
+          </p>
+          <WeeklyScheduleEditor
+            value={schedule}
+            onChange={(next) => {
+              setSchedule(next);
+              setDirty(true);
+            }}
+            country={country}
+            effectiveDate={values.hire_date}
+            errors={(result?.errors ?? []).filter((e) => String(e.field ?? "").startsWith("schedule"))}
+            disabled={Boolean(busy)}
+          />
         </fieldset>
       )}
 

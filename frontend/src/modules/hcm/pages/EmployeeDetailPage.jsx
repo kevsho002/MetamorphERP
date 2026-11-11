@@ -11,10 +11,22 @@ import ImageUploadDialog from "../components/ImageUploadDialog.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import UserAccountPanel from "../components/UserAccountPanel.jsx";
+import RosterPanel from "../../roster/components/RosterPanel.jsx";
+import GeneralIdsPanel from "../../generalIds/components/GeneralIdsPanel.jsx";
+import SchedulePanel from "../../scheduling/components/SchedulePanel.jsx";
+import EmployeeActionsPanel from "../../personnelActions/components/EmployeeActionsPanel.jsx";
 import { useCatalogs } from "../hooks/useCatalogs.js";
 import { formatDate, todayIso } from "../lib/format.js";
 
-const FIXED_TABS = { documents: "Documentos", account: "Cuenta Metamorph", history: "Historial" };
+const FIXED_TABS = {
+  documents: "Documentos",
+  roster: "Roster",
+  general_ids: "General IDs",
+  schedule: "Horario",
+  actions: "Acciones de personal",
+  account: "Cuenta Metamorph",
+  history: "Historial",
+};
 
 /**
  * Expediente digital del empleado (/hcm/employees/:code).
@@ -64,6 +76,10 @@ export default function EmployeeDetailPage() {
     if (!data) return [];
     const list = data.tabs.map((t) => ({ id: t.id, label: t.label, dynamic: true }));
     list.push({ id: "documents", label: `${FIXED_TABS.documents} (${data.documents.required_ok}/${data.documents.required_total})` });
+    if (hasPermission("roster.view")) list.push({ id: "roster", label: FIXED_TABS.roster });
+    if (hasPermission("general_ids.view")) list.push({ id: "general_ids", label: FIXED_TABS.general_ids });
+    if (hasPermission("schedules.view")) list.push({ id: "schedule", label: FIXED_TABS.schedule });
+    if (hasPermission("actions.view")) list.push({ id: "actions", label: FIXED_TABS.actions });
     if (hasPermission("users.view")) list.push({ id: "account", label: FIXED_TABS.account });
     if (hasPermission("hcm.manage")) list.push({ id: "history", label: FIXED_TABS.history });
     return list;
@@ -177,7 +193,7 @@ export default function EmployeeDetailPage() {
               </div>
               {emp.termination_date && (
                 <div>
-                  <dt>Retiro</dt>
+                  <dt>Terminación</dt>
                   <dd>{formatDate(emp.termination_date)}</dd>
                 </div>
               )}
@@ -308,6 +324,10 @@ export default function EmployeeDetailPage() {
               onView={openDocument}
             />
           )}
+          {activeTab === "roster" && <RosterPanel employee={emp} />}
+          {activeTab === "general_ids" && <GeneralIdsPanel employee={emp} />}
+          {activeTab === "schedule" && <SchedulePanel employee={emp} />}
+          {activeTab === "actions" && <EmployeeActionsPanel employee={emp} />}
           {activeTab === "account" && <UserAccountPanel employee={emp} onChanged={reload} />}
           {activeTab === "history" && <HistoryPanel code={emp.employee_code} refreshKey={reloadKey} />}
         </div>

@@ -62,6 +62,11 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.employees",
     "apps.system",
+    "apps.roster",
+    "apps.operations",
+    "apps.general_ids",
+    "apps.scheduling",
+    "apps.personnel_actions",
     "apps.health",
     "apps.web",
 ]
@@ -209,5 +214,15 @@ LOGGING = {
         "apps.accounts": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
         "apps.employees": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
         "apps.system": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
+        "apps.roster": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
+        "apps.general_ids": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
+        "apps.scheduling": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
+        "apps.personnel_actions": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
     },
 }
+
+# ------------------------------------------------------------------ horarios y tiempo (Fase 10)
+# La carga MANUAL de registros de tiempo (formulario y archivo) está retirada temporalmente por el riesgo de
+# manipulación: los endpoints de escritura responden 403. Los registros existentes se siguen consultando y la
+# base (sch_time_record, origen WEB_TIMER) queda lista para el futuro Web Timer interno.
+SCHEDULING_MANUAL_TIME_ENTRY = env_bool("SCHEDULING_MANUAL_TIME_ENTRY", False)

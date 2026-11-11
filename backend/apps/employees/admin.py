@@ -1,4 +1,5 @@
-"""/admin/ de empleados: SOLO parametrización (plantillas JSON por país y catálogo de atributos EAV).
+"""/admin/ de empleados: SOLO parametrización (plantillas JSON por país, catálogo de atributos EAV y,
+desde la Fase 7, catálogo de bancos por país).
 
 Fase 5: los empleados, sus valores EAV, expedientes, cargas masivas y cuentas de usuario se
 gestionan en la aplicación (React + API), donde se aplican las reglas de negocio, el RBAC y la
@@ -16,7 +17,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
-from apps.employees.models import AttributeDefinition, EmployeeTemplate
+from apps.employees.models import AttributeDefinition, Bank, EmployeeTemplate
 from apps.employees.schema import resolve_template
 
 
@@ -38,6 +39,35 @@ def _pre(value) -> str:
         '<pre style="white-space: pre-wrap; margin: 0; font-size: 12px;">{}</pre>',
         json.dumps(value, ensure_ascii=False, indent=2) if not isinstance(value, str) else value,
     )
+
+
+# --------------------------------------------------------------------- bancos (Fase 7)
+@admin.register(Bank)
+class BankAdmin(admin.ModelAdmin):
+    """Bancos por país: alimentan las listas desplegables con la regla `"catalog": "BANK"`."""
+
+    list_display = ("name", "code", "country", "swift_code", "display_order", "is_active", "employee_count")
+    list_filter = ("country", "is_active")
+    list_editable = ("display_order", "is_active")
+    search_fields = ("code", "name", "swift_code")
+    list_select_related = ("country",)
+    ordering = ("country__country_code", "display_order", "name")
+    readonly_fields = ("created_at", "updated_at")
+
+    @admin.display(description="empleados")
+    def employee_count(self, obj):
+        from apps.employees.models import EmployeeAttributeValue
+
+        return EmployeeAttributeValue.objects.filter(
+            attribute__code="bank_name", value=obj.code, employee__country_id=obj.country_id
+        ).count()
+
+    def get_readonly_fields(self, request, obj=None):
+        # El código se guarda en los expedientes: no cambia una vez creado (se puede renombrar).
+        return (*self.readonly_fields, "country", "code") if obj else self.readonly_fields
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # se desactivan: los expedientes conservan el código
 
 
 # --------------------------------------------------------------------- atributos dinámicos
