@@ -1,0 +1,12 @@
+Estamos avanzando a la Fase 5 del desarrollo de "Metamorph ERP". Necesitamos implementar dos características críticas para cerrar el ciclo de gestión del talento humano:
+
+1. **Expediente Digital Dinámico (EAV, Fechas de Efectividad y Multimedia):**
+   - Diseña y desarrolla la vista del expediente digital del empleado en React, adaptando los campos, secciones y pestañas de manera dinámica mediante el uso de plantillas JSON y estructuras EAV evaluadas según la fecha de contratación o de efectividad del registro.
+   - Implementa la funcionalidad en backend y frontend para la subida, almacenamiento seguro y previsualización interactiva de archivos multimedia e imágenes (fotografía de perfil del empleado y documentos oficiales de respaldo en formatos PNG, JPG y JPEG).
+
+2. **Vinculación Automatizada entre Usuario de Sistema y Empleado:**
+   - Modifica el flujo de alta individual de empleados para que el generalista de RRHH encuentre una opción interactiva (como un selector o checkbox) que pregunte: "¿Desea crear un perfil de usuario Metamorph vinculado a este empleado?".
+   - En el backend (Django), haz que el sistema cree automáticamente el usuario de acceso asociándolo de forma limpia a la tabla de empleados (por ejemplo, mediante una clave foránea o el ID corporativo).
+   - Asegura que el panel de administración (`/admin/`) quede reservado estrictamente para la gestión de parámetros de sesión, control del cliente web y el registro de auditoría (audit trail), evitando por completo asignaciones manuales desarticuladas o confusas en los perfiles.
+
+Por favor, ejecuta las migraciones necesarias en Microsoft SQL Server, desarrolla los serializadores, vistas, componentes de React y endpoints correspondientes, y verifica que todo compile sin errores.

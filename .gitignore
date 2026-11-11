@@ -1,0 +1,24 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/.env
+backend/staticfiles/
+backend/private_media/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Editores / SO
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Credenciales locales: nunca al repositorio
+superusuario.txt
+*.env
+!backend/.env.example
