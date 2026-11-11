@@ -5,11 +5,14 @@
                                (50040); las asignaciones ADICIONALES (turno partido / doble) conviven con él
     sch_lunch_rule             reglas de almuerzo por país: desde N minutos de jornada continua, almuerzo mínimo
     sch_night_rule             nocturnidad por país: ventana horaria y % de recargo, con vigencia (50042)
-    sch_pay_cycle              ciclo de pago (quincenal / mensual / N días) y su regla de corte interno
-    sch_pay_period             periodos generados: fechas del periodo, ventana de asistencia (corte) y
-                               fecha de pago; contiguos por ciclo: sin colisión (50043 / 50044) ni hueco
-                               (50045 / 50046) contra el fin del periodo anterior; admite cortes que cruzan
-                               de mes (10–24 y 25–9)
+    sch_pay_cycle              ciclo de pago (quincenal / mensual / N días): regla del PERIODO DE PAGO y,
+                               por separado, regla del CORTE INTERNO de asistencia (Fase 11)
+    sch_pay_period             PERIODOS DE PAGO: fechas oficiales de devengo y fecha de pago (1–15 / 16–fin);
+                               contiguos por ciclo: sin colisión (50043) ni hueco (50045)
+    sch_attendance_cutoff      CORTES INTERNOS de asistencia (Fase 11): ventanas en las que se cuentan las horas,
+                               pueden cruzar de mes (25–9 / 10–24); contiguas entre sí (50044 / 50046) e
+                               independientes de los periodos; cada una se mapea al periodo de pago que contiene
+                               su fecha de cierre (50048)
     sch_time_record            registro de tiempo / marcación: intervalo entrada-salida (hora local) o
                                duración reportada para una fecha; sin traslapes por empleado (50041)
     sch_time_record_day        porción del registro en cada DÍA CALENDARIO DE OCURRENCIA (un turno de
@@ -276,9 +279,18 @@ class PayCycle(models.Model):
     )
     anchor_date = models.DateField("fecha ancla", null=True, blank=True,
                                    help_text="Solo para «Bloques de N días»: inicio de un periodo cualquiera.")
+    cutoff_start_day = models.PositiveSmallIntegerField(
+        "corte interno: día de inicio de la ventana", null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text="Ventanas de asistencia PROPIAS, independientes del periodo de pago. Quincenal 10 + fin 24 = del 10 al 24 "
+                  "y del 25 al 9 del mes siguiente; mensual 26 = del 26 al 25. Vacío = derivadas del periodo de pago.",
+    )
+    cutoff_first_end_day = models.PositiveSmallIntegerField(
+        "corte interno: fin de la primera ventana", null=True, blank=True, validators=[MinValueValidator(5), MaxValueValidator(27)],
+        help_text="Solo quincenal con ventanas propias: último día de la primera ventana del mes (24 en un corte 10–24 / 25–9).",
+    )
     cutoff_lag_days = models.PositiveSmallIntegerField(
         "corte interno: días antes del fin", default=0, validators=[MaxValueValidator(15)],
-        help_text="La asistencia del periodo se cierra N días antes de su fin; lo posterior entra en el periodo siguiente.",
+        help_text="Solo si NO hay ventanas propias: la asistencia se cierra N días antes del fin del periodo de pago.",
     )
     payment_lag_days = models.PositiveSmallIntegerField(
         "días de pago después del fin", default=0, validators=[MaxValueValidator(31)],
@@ -313,12 +325,21 @@ class PayCycle(models.Model):
         return engine.CycleRule(
             period_rule=self.period_rule, first_half_end_day=self.first_half_end_day, length_days=self.length_days,
             anchor_date=self.anchor_date, cutoff_lag_days=self.cutoff_lag_days, payment_lag_days=self.payment_lag_days,
-            period_start_day=self.period_start_day or 1,
+            period_start_day=self.period_start_day or 1, cutoff_start_day=self.cutoff_start_day,
+            cutoff_first_end_day=self.cutoff_first_end_day,
         )
 
     @property
     def rule_description(self) -> str:
         return engine.describe_rule(self.rule())
+
+    @property
+    def cutoff_rule_description(self) -> str:
+        return engine.describe_cutoff_rule(self.rule())
+
+    @property
+    def has_own_cutoffs(self) -> bool:
+        return engine.cutoff_window_rule(self.rule()) is not None
 
     def clean(self):
         errors = {}
@@ -340,41 +361,62 @@ class PayCycle(models.Model):
             if not self.anchor_date:
                 errors["anchor_date"] = "Indique la fecha en que inicia un periodo (ancla)."
         start_day = self.period_start_day or 1
+        shortest = None
         if self.period_rule == self.PeriodRule.HALF_MONTH and self.first_half_end_day:
-            first_len = self.first_half_end_day - start_day + 1
-            second_len = 28 - self.first_half_end_day + start_day - 1  # en el mes más corto (febrero)
-            if first_len < 7:
-                errors["first_half_end_day"] = (
-                    f"El primer periodo (del {start_day} al {self.first_half_end_day}) debe durar al menos 7 días."
-                )
-            elif second_len < 7:
-                errors["first_half_end_day"] = "El segundo periodo quedaría con menos de 7 días en febrero: adelante el fin del primero."
+            message, shortest = _half_month_errors(start_day, self.first_half_end_day, "quincena")
+            if message:
+                errors["first_half_end_day"] = message
         if self.period_rule == self.PeriodRule.FIXED_DAYS and start_day != 1:
             errors["period_start_day"] = "En «Bloques de N días» el inicio lo marca la fecha ancla (deje 1)."
+        # Corte interno: ventanas propias (independientes del periodo de pago) o derivadas con N días de anticipación.
+        if self.cutoff_start_day:
+            if self.period_rule == self.PeriodRule.FIXED_DAYS:
+                errors["cutoff_start_day"] = ("En «Bloques de N días» el corte se deriva del periodo: deje vacío el día de "
+                                              "inicio y use los días de anticipación.")
+            elif self.cutoff_lag_days:
+                errors["cutoff_lag_days"] = "Con ventanas de asistencia propias no se usan días de anticipación (deje 0)."
+            elif self.period_rule == self.PeriodRule.HALF_MONTH:
+                if not self.cutoff_first_end_day:
+                    errors["cutoff_first_end_day"] = "Indique el último día de la primera ventana (p. ej. 24 en un corte 10–24 / 25–9)."
+                else:
+                    message, _ = _half_month_errors(self.cutoff_start_day, self.cutoff_first_end_day, "ventana de asistencia")
+                    if message:
+                        errors["cutoff_first_end_day"] = message
+        elif self.cutoff_first_end_day:
+            errors["cutoff_start_day"] = "Indique también el día de inicio de la ventana (o deje ambos vacíos)."
         if self.length_days and self.cutoff_lag_days >= self.length_days:
             errors["cutoff_lag_days"] = "El corte interno debe ocurrir dentro del periodo."
         if self.period_rule == self.PeriodRule.HALF_MONTH and self.cutoff_lag_days > 10:
             errors["cutoff_lag_days"] = "En un ciclo quincenal el corte no puede ser más de 10 días antes del fin."
+        elif shortest and self.cutoff_lag_days >= shortest:
+            errors["cutoff_lag_days"] = f"El corte debe cerrar dentro de cada periodo (el más corto dura {shortest} días)."
         if errors:
             raise ValidationError(errors)
 
 
+def _half_month_errors(start_day: int, first_end: int, what: str) -> tuple[str | None, int]:
+    """Las dos mitades del mes (también en febrero) deben durar al menos 7 días. Devuelve (error, días de la más corta)."""
+    first_len = first_end - start_day + 1
+    second_len = 28 - first_end + start_day - 1  # en el mes más corto (febrero)
+    if first_len < 7:
+        return f"La primera {what} (del {start_day} al {first_end}) debe durar al menos 7 días.", first_len
+    if second_len < 7:
+        return f"La segunda {what} quedaría con menos de 7 días en febrero: adelante el fin de la primera.", second_len
+    return None, min(first_len, second_len)
+
+
 class PayPeriod(models.Model):
-    class Status(models.TextChoices):
-        OPEN = "OPEN", "Abierto"
-        CLOSED = "CLOSED", "Corte cerrado"
+    """Periodo de PAGO (Fase 11): fechas oficiales de devengo y fecha de pago (quincena 1–15 / 16–fin, mes).
+
+    Ya no guarda la ventana de asistencia: los cortes internos son otra tabla (`AttendanceCutoff`) con sus propias
+    reglas de traslape. Las horas de un periodo de pago son las de los cortes que se mapean a él.
+    """
 
     cycle = models.ForeignKey(PayCycle, on_delete=models.PROTECT, related_name="periods", verbose_name="ciclo")
     code = models.CharField("código", max_length=40)
     period_start = models.DateField("inicio del periodo")
     period_end = models.DateField("fin del periodo")
-    cutoff_start = models.DateField("asistencia desde", help_text="Ventana del corte operativo interno.")
-    cutoff_end = models.DateField("asistencia hasta (corte)")
     payment_date = models.DateField("fecha de pago")
-    status = models.CharField("estado", max_length=6, choices=Status, default=Status.OPEN)
-    closed_at = models.DateTimeField("cerrado", null=True, blank=True)
-    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name="+", verbose_name="cerrado por")
     created_at = models.DateTimeField("creado", auto_now_add=True)
 
     class Meta:
@@ -386,28 +428,37 @@ class PayPeriod(models.Model):
             models.UniqueConstraint(fields=["cycle", "period_start"], name="uq_sch_pay_period_start"),
             models.UniqueConstraint(fields=["cycle", "code"], name="uq_sch_pay_period_code"),
             models.CheckConstraint(condition=Q(period_end__gte=models.F("period_start")), name="ck_sch_pay_period_dates"),
-            models.CheckConstraint(condition=Q(cutoff_end__gte=models.F("cutoff_start")), name="ck_sch_pay_period_cutoff"),
-            models.CheckConstraint(condition=Q(status__in=["OPEN", "CLOSED"]), name="ck_sch_pay_period_status"),
         ]
 
     def __str__(self) -> str:
         return f"{self.cycle.code} {self.code}"
 
+    @property
+    def crosses_month(self) -> bool:
+        return (self.period_start.year, self.period_start.month) != (self.period_end.year, self.period_end.month)
+
     def clean(self):
         errors = {}
         if self.period_start and self.period_end and self.period_end < self.period_start:
             errors["period_end"] = "El fin del periodo no puede ser anterior a su inicio."
-        if self.cutoff_start and self.cutoff_end and self.cutoff_end < self.cutoff_start:
-            errors["cutoff_end"] = "El corte no puede ser anterior al inicio de la ventana de asistencia."
+        if self.payment_date and self.period_start and self.payment_date < self.period_start:
+            errors["payment_date"] = "La fecha de pago no puede ser anterior al inicio del periodo."
         if not errors and self.cycle_id and self.period_start:
             errors.update(self.continuity_errors())
+        if not errors and self.pk and self.period_start and self.period_end:
+            outside = self.cutoffs.exclude(cutoff_end__range=(self.period_start, self.period_end)).first()
+            if outside:
+                errors["period_end"] = (
+                    f"El corte {outside.code} (cierra el {outside.cutoff_end:%d/%m/%Y}) está mapeado a este periodo: "
+                    "el periodo debe contener esa fecha."
+                )
         if errors:
             raise ValidationError(errors)
 
     def continuity_errors(self) -> dict:
-        """Mismas reglas que SQL Server (50043–50046): el periodo y su ventana de corte deben continuar
-        exactamente el día siguiente al fin del periodo anterior del ciclo (sin hueco ni colisión), aunque
-        crucen de un mes al otro; y no pueden pisar al periodo siguiente."""
+        """Mismas reglas que SQL Server (50043 / 50045): el periodo continúa exactamente el día siguiente al fin del
+        periodo de pago anterior del ciclo (sin hueco ni colisión) y no pisa al siguiente. Los cortes de asistencia
+        tienen su propia validación (son otra dimensión)."""
         from datetime import timedelta
 
         errors = {}
@@ -420,15 +471,101 @@ class PayPeriod(models.Model):
                 f"El periodo {kind} {prev.code} (termina el {prev.period_end:%d/%m/%Y}): debe iniciar el "
                 f"{prev.period_end + timedelta(days=1):%d/%m/%Y}."
             )
-        if prev and self.cutoff_start and self.cutoff_start != prev.cutoff_end + timedelta(days=1):
-            errors["cutoff_start"] = (
-                f"La ventana de asistencia debe iniciar el {prev.cutoff_end + timedelta(days=1):%d/%m/%Y} "
-                f"(día siguiente al corte de {prev.code})."
-            )
         if nxt and self.period_end and self.period_end >= nxt.period_start:
             errors["period_end"] = f"El periodo se cruza con {nxt.code} (inicia el {nxt.period_start:%d/%m/%Y})."
+        return errors
+
+
+class AttendanceCutoff(models.Model):
+    """Corte interno de asistencia (Fase 11): ventana operativa en la que se cuentan las horas trabajadas.
+
+    Es INDEPENDIENTE del periodo de pago: puede cruzar de mes (del 25 al 9 y del 10 al 24) aunque la quincena sea
+    del 1 al 15 y del 16 a fin de mes. Las ventanas de un ciclo no se traslapan ni dejan huecos entre sí, y cada una
+    se mapea al periodo de pago más próximo: el que contiene su fecha de cierre (el corte 25/12–09/01 se paga en la
+    quincena 1–15 de enero). Cerrar el corte bloquea cambios de tiempo y horarios en sus fechas.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Abierto"
+        CLOSED = "CLOSED", "Cerrado"
+
+    cycle = models.ForeignKey(PayCycle, on_delete=models.PROTECT, related_name="cutoffs", verbose_name="ciclo")
+    pay_period = models.ForeignKey(PayPeriod, on_delete=models.PROTECT, related_name="cutoffs",
+                                   verbose_name="periodo de pago", help_text="El que contiene la fecha de cierre del corte.")
+    code = models.CharField("código", max_length=40)
+    cutoff_start = models.DateField("asistencia desde")
+    cutoff_end = models.DateField("asistencia hasta (cierre)")
+    status = models.CharField("estado", max_length=6, choices=Status, default=Status.OPEN)
+    closed_at = models.DateTimeField("cerrado", null=True, blank=True)
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name="+", verbose_name="cerrado por")
+    notes = models.CharField("notas", max_length=300, blank=True)
+    created_at = models.DateTimeField("creado", auto_now_add=True)
+
+    class Meta:
+        db_table = "sch_attendance_cutoff"
+        ordering = ["cycle_id", "cutoff_start"]
+        verbose_name = "corte interno de asistencia"
+        verbose_name_plural = "cortes internos de asistencia"
+        indexes = [models.Index(fields=["cycle", "cutoff_end"], name="ix_sch_cutoff_cycle_end")]
+        constraints = [
+            models.UniqueConstraint(fields=["cycle", "cutoff_start"], name="uq_sch_cutoff_start"),
+            models.UniqueConstraint(fields=["cycle", "code"], name="uq_sch_cutoff_code"),
+            models.CheckConstraint(condition=Q(cutoff_end__gte=models.F("cutoff_start")), name="ck_sch_cutoff_dates"),
+            models.CheckConstraint(condition=Q(status__in=["OPEN", "CLOSED"]), name="ck_sch_cutoff_status"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.cycle.code} {self.code}"
+
+    @property
+    def crosses_month(self) -> bool:
+        return (self.cutoff_start.year, self.cutoff_start.month) != (self.cutoff_end.year, self.cutoff_end.month)
+
+    def clean(self):
+        errors = {}
+        if self.cutoff_start and self.cutoff_end and self.cutoff_end < self.cutoff_start:
+            errors["cutoff_end"] = "El cierre no puede ser anterior al inicio de la ventana de asistencia."
+        if not errors and self.cycle_id and self.cutoff_start:
+            errors.update(self.continuity_errors())
+            errors.update(self.mapping_errors())
+        if errors:
+            raise ValidationError(errors)
+
+    def mapping_errors(self) -> dict:
+        """Mismo criterio que SQL Server (50048): mismo ciclo y el periodo de pago contiene la fecha de cierre."""
+        if not self.pay_period_id or not self.cutoff_end:
+            return {}
+        p = self.pay_period
+        if p.cycle_id != self.cycle_id:
+            return {"pay_period": f"El periodo {p.code} es de otro ciclo."}
+        if not p.period_start <= self.cutoff_end <= p.period_end:
+            target = PayPeriod.objects.filter(cycle_id=self.cycle_id, period_start__lte=self.cutoff_end,
+                                              period_end__gte=self.cutoff_end).first()
+            hint = f" Corresponde a {target.code}." if target else " Genere primero el periodo de pago que contiene esa fecha."
+            return {"pay_period": (
+                f"El corte cierra el {self.cutoff_end:%d/%m/%Y}: se mapea al periodo de pago que contiene esa fecha, no a "
+                f"{p.code} ({p.period_start:%d/%m/%Y}–{p.period_end:%d/%m/%Y}).{hint}"
+            )}
+        return {}
+
+    def continuity_errors(self) -> dict:
+        """Mismas reglas que SQL Server (50044 / 50046): la ventana inicia el día siguiente al cierre de la ventana
+        anterior del ciclo (sin hueco ni colisión) y no pisa a la siguiente. No depende de los periodos de pago."""
+        from datetime import timedelta
+
+        errors = {}
+        siblings = AttendanceCutoff.objects.filter(cycle_id=self.cycle_id).exclude(pk=self.pk)
+        prev = siblings.filter(cutoff_start__lt=self.cutoff_start).order_by("-cutoff_start").first()
+        nxt = siblings.filter(cutoff_start__gt=self.cutoff_start).order_by("cutoff_start").first()
+        if prev and self.cutoff_start != prev.cutoff_end + timedelta(days=1):
+            kind = "se cruza con" if self.cutoff_start <= prev.cutoff_end else "deja un hueco después de"
+            errors["cutoff_start"] = (
+                f"La ventana {kind} el corte {prev.code} (cierra el {prev.cutoff_end:%d/%m/%Y}): debe iniciar el "
+                f"{prev.cutoff_end + timedelta(days=1):%d/%m/%Y}."
+            )
         if nxt and self.cutoff_end and self.cutoff_end >= nxt.cutoff_start:
-            errors["cutoff_end"] = f"La ventana de asistencia se cruza con la de {nxt.code} (inicia el {nxt.cutoff_start:%d/%m/%Y})."
+            errors["cutoff_end"] = f"La ventana se cruza con el corte {nxt.code} (inicia el {nxt.cutoff_start:%d/%m/%Y})."
         return errors
 
 

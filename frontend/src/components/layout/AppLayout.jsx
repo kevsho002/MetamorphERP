@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { AgentPresenceProvider } from "../../modules/acd/AgentPresenceContext.jsx";
 import AnnouncementBar from "./AnnouncementBar.jsx";
 import SessionWatcher from "./SessionWatcher.jsx";
+import Sidebar, { useSidebarPin } from "./Sidebar.jsx";
+import UserPresenceMenu from "./UserPresenceMenu.jsx";
+
+const DESKTOP = "(min-width: 900px)";
 
 export default function AppLayout({ modules }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, logout, hasPermission } = useAuth();
+  const [pinned, togglePin] = useSidebarPin();
+  const { hasPermission } = useAuth();
   const location = useLocation();
 
   // En móvil, el menú se cierra al navegar.
@@ -14,50 +20,35 @@ export default function AppLayout({ modules }) {
 
   // El menú refleja la matriz RBAC; la autorización real la aplica la API.
   const visibleModules = modules.filter((m) => hasPermission(m.permission));
+  // ☰: en móvil abre el panel deslizable; en escritorio fija / contrae el menú.
+  const onMenuButton = () => (window.matchMedia(DESKTOP).matches ? togglePin() : setMenuOpen((v) => !v));
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <button
-          type="button"
-          className="topbar__menu"
-          aria-label="Abrir menú"
-          aria-expanded={menuOpen}
-          aria-controls="sidebar"
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          ☰
-        </button>
-        <span className="topbar__brand">Metamorph ERP</span>
-        <span className="topbar__user" title={user?.employee_code ?? undefined}>
-          {user?.display_name} · {user?.role_label}
-        </span>
-        <button type="button" className="topbar__logout" onClick={() => logout()}>
-          Salir
-        </button>
-      </header>
+    <AgentPresenceProvider>
+      <div className={`shell${pinned ? "" : " shell--collapsed"}`}>
+        <header className="topbar">
+          <button
+            type="button"
+            className="topbar__menu"
+            aria-label="Mostrar u ocultar el menú"
+            aria-expanded={menuOpen}
+            aria-controls="sidebar"
+            onClick={onMenuButton}
+          >
+            ☰
+          </button>
+          <span className="topbar__brand">Metamorph ERP</span>
+          <UserPresenceMenu />
+        </header>
 
-      <nav id="sidebar" className={`sidebar${menuOpen ? " sidebar--open" : ""}`} aria-label="Módulos">
-        {visibleModules.map((m) => (
-          <section key={m.id} className="sidebar__group">
-            <h2 className="sidebar__title">{m.label}</h2>
-            {m.menu
-              .filter((item) => hasPermission(item.permission))
-              .map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className="sidebar__link">
-                {item.label}
-              </NavLink>
-              ))}
-          </section>
-        ))}
-        {visibleModules.length === 0 && <p className="muted">Su rol aún no tiene módulos habilitados.</p>}
-      </nav>
+        <Sidebar modules={visibleModules} hasPermission={hasPermission} pinned={pinned} onTogglePin={togglePin} mobileOpen={menuOpen} />
 
-      <main className="content">
-        <AnnouncementBar />
-        <Outlet />
-      </main>
-      <SessionWatcher />
-    </div>
+        <main className="content">
+          <AnnouncementBar />
+          <Outlet />
+        </main>
+        <SessionWatcher />
+      </div>
+    </AgentPresenceProvider>
   );
 }

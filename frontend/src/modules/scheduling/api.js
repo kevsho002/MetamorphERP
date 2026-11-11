@@ -18,6 +18,8 @@ export const schedulingApi = {
   reportCsvUrl: (params) => apiUrl(`/scheduling/report/${toQuery({ ...params, page: undefined, export: "csv" })}`),
   payCycles: (params, options) => api.get(`/scheduling/pay-cycles/${toQuery(params)}`, options),
   generatePeriods: (code, year) => api.post(`/scheduling/pay-cycles/${enc(code)}/generate/`, { year }),
-  closePeriod: (id) => api.post(`/scheduling/pay-periods/${id}/close/`),
-  reopenPeriod: (id) => api.post(`/scheduling/pay-periods/${id}/reopen/`),
+  payPeriodHours: (id, options) => api.get(`/scheduling/pay-periods/${id}/hours/`, options),
+  payPeriodHoursCsvUrl: (id) => apiUrl(`/scheduling/pay-periods/${id}/hours/?export=csv`),
+  closeCutoff: (id) => api.post(`/scheduling/cutoffs/${id}/close/`),
+  reopenCutoff: (id) => api.post(`/scheduling/cutoffs/${id}/reopen/`),
 };

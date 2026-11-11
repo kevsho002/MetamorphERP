@@ -1,0 +1,476 @@
+/* Fase 14 — Barra superior estilo Genesys Cloud: botón de turno, avatar con estado y lista unificada de estados */
+.topbar__brand {
+  white-space: nowrap;
+}
+
+.topbar__brand {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.presence {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* -------------------------------------------------------- botón de turno -- */
+.shift-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #2e9e5b;
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.shift-button:hover:not(:disabled) {
+  background: #268a4e;
+}
+
+.shift-button:focus-visible,
+.presence__trigger:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.shift-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.shift-button__icon {
+  font-size: 0.7rem;
+}
+
+.shift-button--on {
+  background: rgb(255 255 255 / 0.08);
+  border-color: rgb(255 255 255 / 0.45);
+  font-weight: 500;
+}
+
+.shift-button--on:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.16);
+}
+
+.shift-button--on .shift-button__icon {
+  color: #ff8a80;
+}
+
+.shift-button__timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.shift-button__end {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #c62828;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- avatar -- */
+.presence__trigger {
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.avatar {
+  --avatar-size: 36px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: 50%;
+  background: #3b5b85;
+  box-shadow: 0 0 0 2px var(--status-color, #94a3b8);
+  color: #fff;
+}
+
+.avatar--lg {
+  --avatar-size: 52px;
+}
+
+.avatar__img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar__initials {
+  font-size: calc(var(--avatar-size) * 0.38);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.avatar__status {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: calc(var(--avatar-size) * 0.36);
+  height: calc(var(--avatar-size) * 0.36);
+  border: 2px solid var(--color-primary);
+  border-radius: 50%;
+  background: var(--status-color, #94a3b8);
+}
+
+.presence__panel .avatar__status {
+  border-color: var(--color-surface);
+}
+
+/* ------------------------------------------------------- panel del avatar -- */
+.presence__panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: 300px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 12px 32px rgb(15 30 50 / 0.18);
+  /* Nunca más alto que el espacio bajo la barra: el contenido sobrante se desplaza dentro del panel. */
+  max-height: calc(100vh - var(--topbar-h) - 16px);
+  max-height: calc(100dvh - var(--topbar-h) - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  animation: presence-in 0.12s ease-out;
+}
+
+@keyframes presence-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.presence__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.presence__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.presence__who strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presence__now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  margin: var(--space-3) 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 4px solid var(--status-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--status-color) 10%, var(--color-surface));
+}
+
+.presence__timer {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.presence__timer.is-over {
+  color: var(--color-danger);
+}
+
+.presence__group {
+  flex-basis: 100%;
+}
+
+.presence__hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  font-size: 0.85rem;
+}
+
+.presence__links {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.presence__link {
+  display: block;
+  padding: 7px var(--space-2);
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.presence__link:hover,
+.presence__link:focus-visible {
+  background: var(--color-bg);
+}
+
+.presence__link--muted {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+/* ----------------------------------- lista unificada (estado › aux › sub) -- */
+.status-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.status-menu__li {
+  position: relative;
+}
+
+.status-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 5px var(--space-2);
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.status-menu__item:hover:not(:disabled),
+.status-menu__item:focus-visible,
+.status-menu__item.is-open {
+  background: color-mix(in srgb, var(--status-color, var(--color-accent)) 12%, var(--color-surface));
+  outline: none;
+}
+
+.status-menu__item.is-current {
+  border-left-color: var(--status-color, var(--color-accent));
+  font-weight: 600;
+}
+
+.status-menu__item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status-menu__dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--status-color);
+}
+
+.status-menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.status-menu__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-menu__name {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.status-menu__chevron {
+  flex: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-muted);
+}
+
+.status-menu__check {
+  flex: none;
+  color: var(--color-success);
+}
+
+/*
+ * Submenú en cascada. El contenedor es `position: fixed` (lo coloca Flyout en JS contra los bordes de la ventana), así
+ * el scroll interno del panel no lo recorta. Su relleno transparente del lado del elemento cubre el hueco para que el
+ * cursor no «caiga» entre el menú y el submenú; la lista interna lleva el fondo, la altura máxima y el scroll propio.
+ */
+.status-flyout {
+  position: fixed;
+  top: 0;
+  left: -9999px; /* fuera de vista hasta que se calcula su posición */
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  width: calc(240px + var(--flyout-gap, 6px));
+  max-height: calc(100vh - 16px);
+  padding-right: var(--flyout-gap, 6px);
+}
+
+.status-flyout[data-side="right"] {
+  padding-right: 0;
+  padding-left: var(--flyout-gap, 6px);
+}
+
+/* Si el submenú tuvo que abrirse a la derecha, la flecha del elemento apunta hacia ese lado. */
+.status-menu__li:has(> .status-flyout[data-side="right"]) > .status-menu__item .status-menu__chevron {
+  transform: scaleX(-1);
+}
+
+.status-menu--sub {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 10px 28px rgb(15 30 50 / 0.18);
+  /* solo opacidad: una transformación convertiría la lista en el bloque contenedor de los submenús fijos anidados */
+  animation: cascade-in 0.12s ease-out;
+}
+
+@keyframes cascade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ aviso -- */
+.presence__toast {
+  position: fixed;
+  top: calc(var(--topbar-h) + 10px);
+  right: var(--space-3);
+  z-index: 45;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - 32px));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-ok-fg);
+  border-radius: 8px;
+  background: var(--color-ok-bg);
+  color: var(--color-ok-fg);
+  font-size: 0.875rem;
+  box-shadow: 0 8px 24px rgb(15 30 50 / 0.15);
+}
+
+.presence__toast--error {
+  border-color: var(--color-error-fg);
+  background: var(--color-error-bg);
+  color: var(--color-error-fg);
+}
+
+.presence__toast-close {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------- móvil -- */
+@media (max-width: 640px) {
+  .presence {
+    gap: var(--space-2);
+  }
+
+  .shift-button {
+    padding: 0 10px;
+  }
+
+  /* El texto queda accesible para lectores de pantalla, el botón muestra solo el ícono. */
+  .shift-button:not(.shift-button--on) .shift-button__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .shift-button--on .shift-button__word,
+  .shift-button--on .shift-button__end {
+    display: none;
+  }
+
+  .presence__panel {
+    position: fixed;
+    top: calc(var(--topbar-h) + 6px);
+    left: var(--space-2);
+    right: var(--space-2);
+    width: auto;
+    max-height: calc(100vh - var(--topbar-h) - 16px);
+    max-height: calc(100dvh - var(--topbar-h) - 16px);
+  }
+
+  /* Sin espacio lateral: los submenús se abren en línea (acordeón) y se desplazan con el panel. */
+  .status-flyout {
+    position: static;
+    width: auto;
+    max-height: none;
+    padding: 0;
+  }
+
+  .status-menu--sub {
+    overflow: visible;
+    margin: 2px 0 4px 18px;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+  }
+}

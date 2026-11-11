@@ -2,13 +2,13 @@
 la medianoche), nocturnidad parametrizable, ciclos de pago y cortes internos, reporte teórico vs real."""
 
 import io
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import pytest
 from django.db import DatabaseError, connection, transaction
 
 from apps.scheduling import engine
-from apps.scheduling.models import NightRule, PayCycle, PayPeriod, ScheduleAssignment, TimeRecord, TimeRecordDay
+from apps.scheduling.models import AttendanceCutoff, NightRule, PayCycle, ScheduleAssignment, TimeRecord, TimeRecordDay
 
 pytestmark = pytest.mark.django_db
 S = "/api/v1/scheduling"
@@ -64,13 +64,18 @@ def test_definition_rules():
 
 
 def test_periods_and_internal_cutoffs_are_contiguous():
-    periods = engine.generate_periods(engine.CycleRule("HALF_MONTH", cutoff_lag_days=5, payment_lag_days=2), 2026)
+    rule = engine.CycleRule("HALF_MONTH", cutoff_lag_days=5, payment_lag_days=2)
+    periods = engine.generate_periods(rule, 2026)
     assert len(periods) == 24
     nov2 = next(p for p in periods if p["label"] == "2026-11-Q2")
-    assert (nov2["period_start"], nov2["period_end"]) == (date(2026, 11, 16), date(2026, 11, 30))
-    assert (nov2["cutoff_start"], nov2["cutoff_end"], nov2["payment_date"]) == (date(2026, 11, 11), date(2026, 11, 25), date(2026, 12, 2))
+    assert (nov2["period_start"], nov2["period_end"], nov2["payment_date"]) == (date(2026, 11, 16), date(2026, 11, 30), date(2026, 12, 2))
+    cuts = engine.cutoff_windows(rule, periods)  # corte derivado: cierra 5 días antes del fin del periodo
+    nov2_cut = next(c for c in cuts if c["period"] is nov2)
+    assert (nov2_cut["cutoff_start"], nov2_cut["cutoff_end"]) == (date(2026, 11, 11), date(2026, 11, 25))
     for a, b in zip(periods, periods[1:]):
-        assert (b["cutoff_start"] - a["cutoff_end"]).days == 1 and (b["period_start"] - a["period_end"]).days == 1
+        assert (b["period_start"] - a["period_end"]).days == 1
+    for a, b in zip(cuts, cuts[1:]):
+        assert (b["cutoff_start"] - a["cutoff_end"]).days == 1
     feb = [p for p in periods if p["period_start"].month == 2]
     assert feb[1]["period_end"] == date(2026, 2, 28)
     assert len(engine.generate_periods(engine.CycleRule("MONTH"), 2026)) == 12
@@ -84,6 +89,7 @@ def test_seeded_reference_parameters(countries):
     assert (rule.start_time, rule.end_time, float(rule.surcharge_percent)) == (time(19), time(6), 25.0)
     cycle = PayCycle.objects.get(code="SV_QUINCENAL")
     assert cycle.periods.filter(period_start__year=2026).count() == 24
+    assert cycle.cutoffs.filter(pay_period__period_start__year=2026).count() == 24
 
 
 # ------------------------------------------------------------------ tiempo por fecha de ocurrencia
@@ -146,15 +152,15 @@ def test_hours_report_theoretical_vs_actual_by_occurrence_date(api, hr_user, mak
 # ------------------------------------------------------------------ ciclos y cortes
 def test_closed_cutoff_blocks_time_changes_and_cycles_are_parametrizable(api, hr_user, wfm_user, make_employee, countries):
     emp = make_employee("SV", hire_date=date(2026, 3, 1))  # mensual -> ciclo SV_MENSUAL
-    period = PayPeriod.objects.get(cycle__code="SV_MENSUAL", code="2026-09")
+    cutoff = AttendanceCutoff.objects.get(cycle__code="SV_MENSUAL", code="C-2026-09")
     api.force_login(wfm_user)
-    assert api.post(f"/api/v1/scheduling/pay-periods/{period.pk}/close/").status_code == 403  # WFM no administra nómina
+    assert api.post(f"/api/v1/scheduling/cutoffs/{cutoff.pk}/close/").status_code == 403  # WFM no administra nómina
     api.force_login(hr_user)
-    r = api.post(f"{S}/pay-periods/{period.pk}/close/")
-    assert r.status_code == 200 and r.json()["period"]["status"] == "CLOSED"
+    r = api.post(f"{S}/cutoffs/{cutoff.pk}/close/")
+    assert r.status_code == 200 and r.json()["cutoff"]["status"] == "CLOSED"
     blocked = api.post(f"{S}/time-records/", {"employee_code": emp.employee_code, "occurrence_date": "2026-09-15", "hours": "8"}, format="json")
     assert blocked.status_code == 400 and blocked.json()["errors"][0]["code"] == "closed_period"
-    assert api.post(f"{S}/pay-periods/{period.pk}/reopen/").status_code == 200
+    assert api.post(f"{S}/cutoffs/{cutoff.pk}/reopen/").status_code == 200
 
     cycle = PayCycle.objects.create(code="SV_SEMANAL", name="Semanal", country=countries["SV"], pay_frequency="WEEKLY",
                                     period_rule="FIXED_DAYS", length_days=7, anchor_date=date(2026, 1, 5), cutoff_lag_days=2)
@@ -166,10 +172,10 @@ def test_closed_cutoff_blocks_time_changes_and_cycles_are_parametrizable(api, hr
     assert weekly["periods"][1]["cutoff_start"] == "2026-01-10"
 
     # Trigger 50044: ventanas de corte traslapadas
-    first = cycle.periods.order_by("period_start").first()
+    first = cycle.cutoffs.order_by("cutoff_start").first()
     with pytest.raises(DatabaseError) as exc, transaction.atomic():
-        PayPeriod.objects.create(cycle=cycle, code="X", period_start=date(2027, 6, 1), period_end=date(2027, 6, 7),
-                                 cutoff_start=first.cutoff_end, cutoff_end=date(2027, 6, 5), payment_date=date(2027, 6, 7))
+        AttendanceCutoff.objects.create(cycle=cycle, pay_period=first.pay_period, code="X", cutoff_start=first.cutoff_end,
+                                        cutoff_end=first.cutoff_end + timedelta(days=3))
     assert "50044" in str(exc.value)
 
 
@@ -211,5 +217,5 @@ def test_permissions_and_reporting_views(api, employee_user, wfm_user):
     assert body["can_manage"] and not body["can_manage_cycles"]
     assert any(r["country"] == "SV" and r["start_time"] == "19:00" for r in body["night_rules"])
     with connection.cursor() as cursor:
-        for view in ("vw_SchTimeByOccurrenceDate", "vw_SchScheduleAssignment", "vw_SchPayPeriod"):
+        for view in ("vw_SchTimeByOccurrenceDate", "vw_SchScheduleAssignment", "vw_SchPayPeriod", "vw_SchAttendanceCutoff", "vw_SchPayrollHours"):
             cursor.execute(f"SELECT TOP 1 * FROM dbo.{view}")

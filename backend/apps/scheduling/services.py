@@ -4,11 +4,17 @@ La API solo orquesta; SQL Server es la última barrera (triggers de la migració
     50040  dos horarios PRINCIPALES del empleado en fechas que se cruzan (los adicionales conviven)
     50041  registros de tiempo (entrada/salida) traslapados para un empleado
     50042  dos reglas de nocturnidad activas para un país en fechas que se cruzan
-    50043  periodos de pago traslapados en un ciclo
-    50044  ventanas de corte (asistencia) traslapadas en un ciclo
-    50045  hueco / colisión: el periodo no inicia el día siguiente al fin del periodo anterior
-    50046  hueco / colisión: la ventana de corte no inicia el día siguiente al corte anterior
+    50043  periodos de PAGO traslapados en un ciclo
+    50044  CORTES internos de asistencia traslapados en un ciclo (dimensión independiente, Fase 11)
+    50045  hueco / colisión: el periodo de pago no inicia el día siguiente al fin del periodo anterior
+    50046  hueco / colisión: el corte no inicia el día siguiente al cierre del corte anterior
     50047  dos reglas de almuerzo activas del país con el mismo umbral en fechas que se cruzan
+    50048  el corte se mapea al periodo de pago de su ciclo que contiene su fecha de cierre
+    50049  las fechas de un corte cerrado no se modifican
+
+Periodos de pago y cortes internos (Fase 11): el periodo de pago (1–15 / 16–fin) fija las fechas oficiales de devengo
+y pago; el corte interno (p. ej. 25–9 / 10–24) es la ventana en la que se cuentan las horas. Cada uno se valida contra
+los de su misma dimensión; las horas de un periodo de pago son las de los cortes que se mapean a él.
 
 Varias AP / turnos el mismo día (Fase 10): un día puede tener varios bloques (turno partido) y un empleado
 puede tener, además de su horario principal, asignaciones ADICIONALES con fecha de fin. Las horas
@@ -36,7 +42,7 @@ from django.utils import timezone
 from apps.hcm.models import Employee
 from apps.scheduling import engine
 from apps.scheduling.models import (
-    FAR_FUTURE, LunchRule, NightRule, PayCycle, PayPeriod, ScheduleAssignment, TimeRecord, TimeRecordDay,
+    FAR_FUTURE, AttendanceCutoff, LunchRule, NightRule, PayCycle, PayPeriod, ScheduleAssignment, TimeRecord, TimeRecordDay,
 )
 from apps.system.audit import Category, record
 
@@ -227,28 +233,37 @@ def employee_instances(employee: Employee, start: date, end: date, *, rules: Nig
     return book.instances(employee.pk, start, end, rules.lookup(employee.country_id))
 
 
-# ================================================================ ciclos y cortes
+# ================================================================ ciclos: periodos de pago y cortes internos (Fase 11)
 def cycle_for(employee: Employee) -> PayCycle | None:
     return PayCycle.objects.filter(
         country_id=employee.country_id, pay_frequency=employee.pay_frequency, is_default=True, is_active=True
     ).first()
 
 
-def closed_period_hit(employee: Employee, start: date, end: date | None) -> PayPeriod | None:
-    """Periodo con el corte CERRADO cuya ventana de asistencia toca [start, end]."""
+def cutoff_on(employee: Employee, d: date) -> AttendanceCutoff | None:
+    """Corte interno de asistencia del ciclo del empleado que contiene la fecha de ocurrencia."""
     cycle = cycle_for(employee)
     if not cycle:
         return None
-    return PayPeriod.objects.filter(
-        cycle=cycle, status=PayPeriod.Status.CLOSED, cutoff_start__lte=end or FAR_FUTURE, cutoff_end__gte=start,
+    return AttendanceCutoff.objects.select_related("cycle", "pay_period", "closed_by").filter(
+        cycle=cycle, cutoff_start__lte=d, cutoff_end__gte=d).first()
+
+
+def closed_cutoff_hit(employee: Employee, start: date, end: date | None) -> AttendanceCutoff | None:
+    """Corte de asistencia CERRADO del ciclo del empleado que toca [start, end]."""
+    cycle = cycle_for(employee)
+    if not cycle:
+        return None
+    return AttendanceCutoff.objects.select_related("cycle", "pay_period").filter(
+        cycle=cycle, status=AttendanceCutoff.Status.CLOSED, cutoff_start__lte=end or FAR_FUTURE, cutoff_end__gte=start,
     ).order_by("cutoff_start").first()
 
 
-def _closed_message(period: PayPeriod, what: str) -> str:
+def _closed_message(cutoff: AttendanceCutoff, what: str) -> str:
     return (
-        f"El corte {period.code} del ciclo {period.cycle.code} (asistencia del {fmt(period.cutoff_start)} al "
-        f"{fmt(period.cutoff_end)}) está cerrado: no se pueden {what} en esas fechas. Si hace falta un ajuste, "
-        "pida que se reabra el corte."
+        f"El corte {cutoff.code} del ciclo {cutoff.cycle.code} (asistencia del {fmt(cutoff.cutoff_start)} al "
+        f"{fmt(cutoff.cutoff_end)}, se paga en {cutoff.pay_period.code}) está cerrado: no se pueden {what} en esas "
+        "fechas. Si hace falta un ajuste, pida que se reabra el corte."
     )
 
 
@@ -259,95 +274,205 @@ class PeriodGenerationError(Exception):
 MAX_TRANSITION_GAP_DAYS = 31
 
 
+def _contiguous(items: list, start: date, end: date, *, start_of, end_of, what: str, cycle: PayCycle):
+    """Encaja [start, end] a continuación del último elemento existente (periodos o cortes, cada uno por separado):
+    devuelve el inicio ajustado, o None si queda cubierto / chocaría con uno posterior. Un hueco largo es error."""
+    one = timedelta(days=1)
+    if any(start_of(x) == start for x in items):
+        return None
+    prev = next((x for x in reversed(items) if start_of(x) < start), None)
+    nxt = next((x for x in items if start_of(x) > start), None)
+    if prev:
+        if end <= end_of(prev):
+            return None
+        gap = (start - end_of(prev)).days - 1
+        if gap > MAX_TRANSITION_GAP_DAYS:
+            raise PeriodGenerationError(
+                f"El ciclo {cycle.code} no tiene {what} entre el {fmt(end_of(prev) + one)} y el {fmt(start - one)}: "
+                f"genere primero los años intermedios ({what} contiguos)."
+            )
+        start = end_of(prev) + one  # recorta la colisión o cubre el hueco (transición tras un cambio de regla)
+    if nxt and end >= start_of(nxt):
+        return None
+    return start
+
+
+def _period_row(p: PayPeriod) -> dict:
+    return {"label": p.code, "period_start": p.period_start, "period_end": p.period_end, "id": p.pk}
+
+
 @transaction.atomic
 def generate_periods(cycle: PayCycle, year: int, *, user=None, request=None) -> dict:
-    """Crea los periodos del año que falten; los existentes (incluidos los editados a mano) no se tocan.
+    """Genera, por separado, los PERIODOS DE PAGO del año y sus CORTES INTERNOS de asistencia; lo existente
+    (incluido lo editado a mano) no se toca.
 
-    Los periodos quedan CONTIGUOS al último periodo existente del ciclo, aunque crucen de mes (10–24 / 25–9):
-    * si un periodo calculado choca con uno existente (cambio de regla a mitad de año), se recorta para iniciar
-      el día siguiente al fin del existente (periodo de transición) o se omite si queda cubierto;
-    * si entre el último existente y el calculado queda un hueco corto, el calculado se adelanta para cubrirlo;
-    * la ventana de corte de cada periodo inicia el día siguiente al corte anterior (sin huecos ni colisiones).
+    * Periodos de pago: contiguos al último periodo del ciclo (sin colisión ni hueco); un cambio de regla produce un
+      periodo de transición.
+    * Cortes: contiguos al último corte del ciclo, con su propia regla (p. ej. 25–9 / 10–24) y mapeados al periodo de
+      pago que contiene su fecha de cierre. Se generan los cortes que se pagan en los periodos del año.
     Un hueco de más de un mes (p. ej. generar 2028 sin 2027) se rechaza: genere los años en orden.
     """
+    rule = cycle.rule()
     periods = list(cycle.periods.order_by("period_start"))
     codes = {p.code for p in periods}
     created, skipped = [], 0
-    one = timedelta(days=1)
-    for p in engine.generate_periods(cycle.rule(), year):
-        start, end = p["period_start"], p["period_end"]
-        cut_start, cut_end = p["cutoff_start"], p["cutoff_end"]
-        if any(x.period_start == start for x in periods):
+    for p in engine.generate_periods(rule, year):
+        start = _contiguous(periods, p["period_start"], p["period_end"], start_of=lambda x: x.period_start,
+                            end_of=lambda x: x.period_end, what="periodos de pago", cycle=cycle)
+        code = p["label"] if p["label"] not in codes else f"{p['label']}-T"  # transición con la etiqueta de uno existente
+        if start is None or code in codes:
             skipped += 1
             continue
-        prev = next((x for x in reversed(periods) if x.period_start < start), None)
-        nxt = next((x for x in periods if x.period_start > start), None)
-        if prev:
-            if end <= prev.period_end:
-                skipped += 1  # ya cubierto por un periodo existente
-                continue
-            gap = (start - prev.period_end).days - 1
-            if gap > MAX_TRANSITION_GAP_DAYS:
-                raise PeriodGenerationError(
-                    f"El ciclo {cycle.code} no tiene periodos entre el {fmt(prev.period_end + one)} y el {fmt(start - one)}: "
-                    "genere primero los años intermedios (los periodos deben ser contiguos)."
-                )
-            start = prev.period_end + one  # recorta la colisión o cubre el hueco
-            cut_start = prev.cutoff_end + one
-            if cut_end < cut_start:
-                cut_end = cut_start
-        if nxt and end >= nxt.period_start:
-            skipped += 1  # chocaría con un periodo posterior ya existente
-            continue
-        code = p["label"]
-        if code in codes:
-            code = f"{code}-T"  # periodo de transición con la etiqueta de uno existente
-        if code in codes:
-            skipped += 1
-            continue
-        period = PayPeriod.objects.create(
-            cycle=cycle, code=code, period_start=start, period_end=end,
-            cutoff_start=cut_start, cutoff_end=cut_end, payment_date=p["payment_date"],
-        )
+        period = PayPeriod.objects.create(cycle=cycle, code=code, period_start=start, period_end=p["period_end"],
+                                          payment_date=p["payment_date"])
         created.append(period)
         periods.append(period)
         periods.sort(key=lambda x: x.period_start)
         codes.add(code)
-    if created:
+
+    cut = generate_cutoffs(cycle, year, periods=periods)
+    if created or cut["created"]:
         record(
             "pay_periods_generated", Category.SCHEDULING,
-            f"Se generaron {len(created)} periodos {year} del ciclo {cycle.code} ({skipped} ya existían).",
+            f"Ciclo {cycle.code}, {year}: {len(created)} periodos de pago y {cut['created']} cortes de asistencia generados "
+            f"({skipped} periodos y {cut['skipped']} cortes ya existían).",
             request=request, actor=user, target_type="PayCycle", target_id=cycle.code,
-            details={"year": year, "created": [p.code for p in created]},
+            details={"year": year, "created": [p.code for p in created], "cutoffs": cut["codes"]},
         )
-    return {"created": len(created), "skipped": skipped}
+    return {"created": len(created), "skipped": skipped, "cutoffs_created": cut["created"], "cutoffs_skipped": cut["skipped"]}
+
+
+def generate_cutoffs(cycle: PayCycle, year: int, *, periods: list[PayPeriod] | None = None) -> dict:
+    """Cortes internos que se PAGAN en los periodos de pago del año (los periodos deben existir)."""
+    periods = periods if periods is not None else list(cycle.periods.order_by("period_start"))
+    target_ids = {p.pk for p in periods if p.period_start.year == year}
+    if not target_ids:
+        return {"created": 0, "skipped": 0, "codes": []}
+    lo, hi = date(year - 1, 11, 1), date(year + 1, 1, 31)
+    rows = [_period_row(p) for p in periods if p.period_end >= lo and p.period_start <= hi]
+    cutoffs = list(cycle.cutoffs.order_by("cutoff_start"))
+    codes = {c.code for c in cutoffs}
+    created, skipped = [], 0
+    for w in engine.cutoff_windows(cycle.rule(), rows):
+        period_row = w["period"]
+        if period_row["id"] not in target_ids:
+            continue
+        start = _contiguous(cutoffs, w["cutoff_start"], w["cutoff_end"], start_of=lambda x: x.cutoff_start,
+                            end_of=lambda x: x.cutoff_end, what="cortes de asistencia", cycle=cycle)
+        if start is None:
+            skipped += 1
+            continue
+        code, n = f"C-{period_row['label']}", 2
+        while code in codes:
+            code, n = f"C-{period_row['label']}-{n}", n + 1
+        cutoff = AttendanceCutoff.objects.create(cycle=cycle, pay_period_id=period_row["id"], code=code,
+                                                 cutoff_start=start, cutoff_end=w["cutoff_end"])
+        created.append(cutoff)
+        cutoffs.append(cutoff)
+        cutoffs.sort(key=lambda x: x.cutoff_start)
+        codes.add(code)
+    return {"created": len(created), "skipped": skipped, "codes": [c.code for c in created]}
+
+
+def preview_cycle(cycle: PayCycle, year: int, limit: int = 4) -> list[dict]:
+    """Primeros periodos de pago del año con los cortes que se pagarían en ellos (antes de generarlos)."""
+    periods = engine.generate_periods(cycle.rule(), year)
+    previous = engine.generate_periods(cycle.rule(), year - 1)[-2:]
+    windows = engine.cutoff_windows(cycle.rule(), previous + periods)
+    out = []
+    for p in periods[:limit]:
+        mine = [w for w in windows if w["period"] is p]
+        out.append({**p, "cutoffs": [{"cutoff_start": w["cutoff_start"], "cutoff_end": w["cutoff_end"]} for w in mine]})
+    return out
 
 
 @transaction.atomic
-def set_period_status(period: PayPeriod, status: str, *, user=None, request=None) -> PayPeriod:
-    period.status = status
-    period.closed_at = timezone.now() if status == PayPeriod.Status.CLOSED else None
-    period.closed_by = user if status == PayPeriod.Status.CLOSED else None
-    period.save(update_fields=["status", "closed_at", "closed_by"])
-    verb = "cerrado" if status == PayPeriod.Status.CLOSED else "reabierto"
+def set_cutoff_status(cutoff: AttendanceCutoff, status: str, *, user=None, request=None) -> AttendanceCutoff:
+    closing = status == AttendanceCutoff.Status.CLOSED
+    cutoff.status = status
+    cutoff.closed_at = timezone.now() if closing else None
+    cutoff.closed_by = user if closing else None
+    cutoff.save(update_fields=["status", "closed_at", "closed_by"])
     record(
-        f"pay_period_{'closed' if status == PayPeriod.Status.CLOSED else 'reopened'}", Category.SCHEDULING,
-        f"Corte {period.code} del ciclo {period.cycle.code} {verb} (asistencia {fmt(period.cutoff_start)}–{fmt(period.cutoff_end)}).",
-        request=request, actor=user, target_type="PayPeriod", target_id=str(period.pk),
+        f"cutoff_{'closed' if closing else 'reopened'}", Category.SCHEDULING,
+        f"Corte de asistencia {cutoff.code} del ciclo {cutoff.cycle.code} {'cerrado' if closing else 'reabierto'} "
+        f"(asistencia {fmt(cutoff.cutoff_start)}–{fmt(cutoff.cutoff_end)}, se paga en {cutoff.pay_period.code}).",
+        request=request, actor=user, target_type="AttendanceCutoff", target_id=str(cutoff.pk),
     )
-    return period
+    return cutoff
 
 
-def period_dict(p: PayPeriod) -> dict:
+def _crosses(a: date, b: date) -> bool:
+    return (a.year, a.month) != (b.year, b.month)
+
+
+def cutoff_dict(c: AttendanceCutoff, *, with_period: bool = True) -> dict:
+    out = {
+        "id": c.pk, "code": c.code, "cycle": c.cycle.code,
+        "cutoff_start": c.cutoff_start, "cutoff_end": c.cutoff_end,
+        "days": (c.cutoff_end - c.cutoff_start).days + 1, "crosses_month": _crosses(c.cutoff_start, c.cutoff_end),
+        "status": c.status, "status_label": c.get_status_display(), "closed_at": c.closed_at,
+        "closed_by": c.closed_by.username if c.closed_by_id and c.closed_by else None, "notes": c.notes,
+        "pay_period_id": c.pay_period_id,
+    }
+    if with_period:
+        p = c.pay_period
+        out["pay_period"] = {"id": p.pk, "code": p.code, "period_start": p.period_start, "period_end": p.period_end,
+                             "payment_date": p.payment_date}
+    return out
+
+
+def period_dict(p: PayPeriod, cutoffs: list[AttendanceCutoff] | None = None) -> dict:
+    """Periodo de PAGO con los cortes de asistencia que se pagan en él (`cutoff_start` / `cutoff_end` / `status`
+    resumen esos cortes, para compatibilidad con el reporte por periodo)."""
+    cutoffs = sorted(cutoffs if cutoffs is not None else p.cutoffs.select_related("cycle", "closed_by"), key=lambda c: c.cutoff_start)
+    closed = sum(1 for c in cutoffs if c.status == AttendanceCutoff.Status.CLOSED)
+    status = "NO_CUTOFF" if not cutoffs else "CLOSED" if closed == len(cutoffs) else "OPEN"
     return {
         "id": p.pk, "code": p.code, "cycle": p.cycle.code, "cycle_name": p.cycle.name,
-        "period_start": p.period_start, "period_end": p.period_end,
-        "cutoff_start": p.cutoff_start, "cutoff_end": p.cutoff_end, "payment_date": p.payment_date,
-        "status": p.status, "status_label": p.get_status_display(),
-        "closed_at": p.closed_at, "closed_by": p.closed_by.username if p.closed_by else None,
-        "year": p.period_start.year, "month": p.period_start.month,
-        "crosses_month": (p.period_start.year, p.period_start.month) != (p.period_end.year, p.period_end.month),
+        "period_start": p.period_start, "period_end": p.period_end, "payment_date": p.payment_date,
+        "year": p.period_start.year, "month": p.period_start.month, "crosses_month": _crosses(p.period_start, p.period_end),
+        "cutoffs": [cutoff_dict(c, with_period=False) for c in cutoffs],
+        "cutoff_start": cutoffs[0].cutoff_start if cutoffs else None,
+        "cutoff_end": cutoffs[-1].cutoff_end if cutoffs else None,
+        "status": status,
+        "status_label": {"NO_CUTOFF": "Sin corte", "CLOSED": "Asistencia cerrada", "OPEN": "Asistencia abierta"}[status],
     }
+
+
+def payroll_hours(period: PayPeriod, employees=None) -> dict:
+    """Motor de horas para planilla: por cada CORTE INTERNO mapeado al periodo de pago, horas teóricas y reales de
+    cada empleado del ciclo en la ventana del corte; el total del periodo de pago es la suma de sus cortes."""
+    cycle = period.cycle
+    cutoffs = list(period.cutoffs.select_related("cycle", "closed_by").order_by("cutoff_start"))
+    if employees is None:
+        employees = Employee.objects.select_related("country").filter(country_id=cycle.country_id, pay_frequency=cycle.pay_frequency)
+        if not cycle.is_default:
+            employees = employees.none()  # los empleados se asignan al ciclo PREDETERMINADO de su país y frecuencia
+    employees = list(employees.order_by("employee_code"))
+    per_employee: dict[int, dict] = {}
+    keys = ("scheduled_minutes", "scheduled_night_minutes", "worked_minutes", "worked_night_minutes", "night_premium_minutes")
+    for c in cutoffs:
+        report = hours_report(employees, c.cutoff_start, c.cutoff_end, include_empty=True)
+        by_code = {r["employee_code"]: r for r in report["by_employee"]}
+        for e in employees:
+            row = per_employee.setdefault(e.pk, {
+                "employee_code": e.employee_code, "full_name": e.full_name, "country": e.country.country_code,
+                "cutoffs": [], **{k: 0 for k in keys},
+            })
+            got = by_code.get(e.employee_code)
+            part = {"cutoff": c.code, **{k: (got or {}).get(k, 0) for k in keys}}
+            row["cutoffs"].append(part)
+            for k in keys:
+                row[k] += part[k]
+    rows = [r for r in per_employee.values() if r["scheduled_minutes"] or r["worked_minutes"]]
+    for r in rows:
+        r["variance_minutes"] = r["worked_minutes"] - r["scheduled_minutes"]
+    totals = {k: sum(r[k] for r in rows) for k in keys}
+    totals["variance_minutes"] = totals["worked_minutes"] - totals["scheduled_minutes"]
+    totals["employees"] = len(rows)
+    return {"period": period_dict(period, cutoffs), "cutoffs": [cutoff_dict(c) for c in cutoffs], "rows": rows, "totals": totals,
+            "all_closed": bool(cutoffs) and all(c.status == AttendanceCutoff.Status.CLOSED for c in cutoffs)}
 
 
 # ================================================================ horario atómico por día (formato AP)
@@ -525,7 +650,7 @@ def check_schedule_application(employee: Employee, effective_date: date, *, defi
         message = _collision(definition, effective_date, end_date if mode == Mode.ADDITIONAL else None, others)
         if message:
             check.error("effective_date", message, "schedule_collision")
-    hit = closed_period_hit(employee, effective_date, end_date if mode == Mode.ADDITIONAL else None)
+    hit = closed_cutoff_hit(employee, effective_date, end_date if mode == Mode.ADDITIONAL else None)
     if hit:
         check.error("effective_date", _closed_message(hit, "cambiar los horarios"), "closed_period")
     return check
@@ -632,7 +757,7 @@ def check_time_record(employee: Employee, data: dict, *, pending: list[dict] | N
         if TimeRecord.objects.filter(employee=employee, kind=TimeRecord.Kind.INTERVAL, occurrence_date=first).exists():
             check.warn("occurrence_date", "Ese día ya tiene marcaciones de entrada/salida: las horas se sumarán.", "mixed_kinds")
 
-    hit = closed_period_hit(employee, first, last)
+    hit = closed_cutoff_hit(employee, first, last)
     if hit:
         check.error("start_at" if has_interval else "occurrence_date", _closed_message(hit, "registrar tiempos"), "closed_period")
     return check
@@ -712,7 +837,7 @@ def create_time_record(employee: Employee, check: Check, *, user=None, request=N
 def check_time_record_delete(rec: TimeRecord) -> Check:
     check = Check()
     last = max((d.occurrence_date for d in rec.days.all()), default=rec.occurrence_date)
-    hit = closed_period_hit(rec.employee, rec.occurrence_date, last)
+    hit = closed_cutoff_hit(rec.employee, rec.occurrence_date, last)
     if hit:
         check.error(None, _closed_message(hit, "eliminar tiempos"), "closed_period")
     return check
@@ -929,8 +1054,7 @@ def day_detail(employee: Employee, d: date) -> dict:
         "employee", "created_by").prefetch_related("days")
     report = hours_report([employee], d, d, include_empty=True)
     row = report["rows"][0] if report["rows"] else None
-    cycle = cycle_for(employee)
-    period = cycle.periods.select_related("cycle", "closed_by").filter(cutoff_start__lte=d, cutoff_end__gte=d).first() if cycle else None
+    cutoff = cutoff_on(employee, d)
     night = rules.rule_for(employee.country_id, d)
     actions = PersonnelAction.objects.filter(employee=employee, effective_date=d).select_related("action_type").order_by("id")
     return {
@@ -944,7 +1068,8 @@ def day_detail(employee: Employee, d: date) -> dict:
         "night_rule": {"name": night.name, "start": night.start_time.strftime("%H:%M"), "end": night.end_time.strftime("%H:%M"),
                        "surcharge_percent": float(night.surcharge_percent)} if night else None,
         "lunch_rules": [lunch_rule_dict(r) for r in lunch_rules_for(employee.country_id, d)],
-        "period": period_dict(period) if period else None,
+        "cutoff": cutoff_dict(cutoff) if cutoff else None,
+        "period": period_dict(cutoff.pay_period) if cutoff else None,
         "actions_effective": [{"folio": a.folio, "action_type": a.action_type.name, "status": a.status,
                                "status_label": a.get_status_display()} for a in actions],
     }

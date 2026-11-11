@@ -1,0 +1,207 @@
+/* Fase 11 — Estados y auxiliares ACD (consola del agente, tablero, reporte y grupos) */
+.acd-now {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left: 6px solid var(--status-color);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.acd-now__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--status-color);
+  flex: none;
+}
+.acd-now__label {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+.acd-now__aux {
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.acd-now__timer {
+  margin: 0 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+.acd-now__timer--over {
+  color: var(--color-danger);
+}
+.acd-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+.acd-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--status-color);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+.acd-option:hover:not(:disabled),
+.acd-option--open {
+  border-color: var(--status-color);
+}
+.acd-option--active {
+  background: color-mix(in srgb, var(--status-color) 14%, var(--color-surface));
+  border-color: var(--status-color);
+}
+.acd-option:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.acd-option__label {
+  font-weight: 700;
+}
+.acd-option__name {
+  font-size: 0.85em;
+  color: var(--color-muted);
+}
+.acd-aux__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.acd-aux__parent {
+  font-weight: 600;
+  margin-right: var(--space-2);
+}
+.acd-aux__children {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.acd-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.acd-pill::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--status-color);
+}
+.row--warn {
+  background: var(--color-warn-bg);
+}
+.acd-report td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.acd-groups {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .acd-groups {
+    grid-template-columns: 1fr;
+  }
+}
+.acd-groups__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.acd-groups__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+.acd-groups__item--active {
+  border-color: var(--color-accent);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+.acd-access {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.acd-access__status {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+}
+.acd-access__aux {
+  margin: 4px 0;
+}
+.acd-access__children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0 1.6em;
+}
+.acd-members {
+  margin: 0;
+  padding-left: 1.2em;
+}
+.acd-members li {
+  margin: 2px 0;
+}
+.acd-members .link-button {
+  margin-left: var(--space-2);
+}
+
+/* Ciclos: periodos de pago y cortes de asistencia (Fase 11) */
+.cycle-card__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-4);
+  font-size: 0.92em;
+}
+.cutoff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cutoff-list__item--current {
+  font-weight: 600;
+}
+.cycle-preview {
+  margin: 0;
+  padding-left: 1.2em;
+}
+.chip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+}

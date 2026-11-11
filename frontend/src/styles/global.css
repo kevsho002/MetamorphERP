@@ -29,6 +29,7 @@
   --space-4: 24px;
   --topbar-h: 56px;
   --sidebar-w: 248px;
+  --sidebar-rail-w: 60px;
 
   font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--color-text);
@@ -108,12 +109,21 @@ code {
   left: 0;
   z-index: 15;
   width: min(var(--sidebar-w), 85vw);
-  padding: var(--space-3);
-  overflow-y: auto;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   transform: translateX(-100%);
   transition: transform 0.2s ease;
+}
+
+.sidebar__panel {
+  height: 100%;
+  padding: var(--space-3);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar__head {
+  display: none; /* el pin solo aplica en escritorio */
 }
 
 .sidebar--open {
@@ -126,20 +136,50 @@ code {
 }
 
 .sidebar__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
   margin: 0 0 var(--space-1);
+  padding: 0 8px;
+  border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.sidebar__icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--color-primary);
+}
+
+.sidebar__icon--text {
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.7rem;
+  letter-spacing: 0;
+}
+
+.sidebar__title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.15s ease;
 }
 
 .sidebar__link {
   display: block;
-  padding: var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) 38px;
   border-radius: 6px;
   color: var(--color-text);
   text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar__link:hover {
@@ -158,17 +198,20 @@ code {
   min-width: 0;
 }
 
-/* Escritorio: sidebar fijo en columna */
+/* Escritorio: sidebar en columna; fijo (pin) o contraído a una barra de íconos que se expande con hover / foco.
+   El contenido usa el ancho restante (minmax(0, 1fr)): las tablas anchas desplazan dentro de .table-wrap. */
 @media (min-width: 900px) {
   .shell {
-    grid-template-columns: var(--sidebar-w) 1fr;
+    --sidebar-current: var(--sidebar-w);
+    grid-template-columns: var(--sidebar-current) minmax(0, 1fr);
     grid-template-areas:
       "topbar topbar"
       "sidebar content";
+    transition: grid-template-columns 0.2s ease;
   }
 
-  .topbar__menu {
-    display: none;
+  .shell--collapsed {
+    --sidebar-current: var(--sidebar-rail-w);
   }
 
   .sidebar {
@@ -178,6 +221,88 @@ code {
     width: auto;
     transform: none;
     box-shadow: none;
+    background: none;
+    border-right: 0;
+    z-index: 18;
+  }
+
+  /* El panel puede ser más ancho que su columna: en modo «peek» se superpone al contenido sin moverlo. */
+  .sidebar__panel {
+    width: var(--sidebar-current);
+    padding: var(--space-2) 10px var(--space-3);
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    transition: width 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .sidebar--peek .sidebar__panel {
+    width: var(--sidebar-w);
+    box-shadow: 6px 0 24px rgb(15 30 50 / 0.16);
+  }
+
+  /* El pin queda en la misma posición contraído o expandido (no «salta» bajo el cursor al expandirse). */
+  .sidebar__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 36px;
+    margin: 0 0 var(--space-2);
+    padding-left: 4px;
+  }
+
+  .sidebar__head-label {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+  }
+
+  .sidebar__pin {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+
+  .sidebar__pin:hover,
+  .sidebar__pin:focus-visible {
+    background: var(--color-bg);
+    color: var(--color-primary);
+    border-color: var(--color-border);
+  }
+
+  .sidebar__pin.is-pinned {
+    color: var(--color-primary);
+  }
+
+  /* Contraído: solo íconos; el texto y los enlaces quedan ocultos pero enfocables (el foco expande el menú). */
+  .sidebar--collapsed .sidebar__head-label,
+  .sidebar--collapsed .sidebar__title-text {
+    opacity: 0;
+    width: 0;
+  }
+
+  .sidebar--collapsed .sidebar__links {
+    height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar--collapsed .sidebar__group + .sidebar__group {
+    margin-top: var(--space-1);
+  }
+
+  .sidebar--collapsed .sidebar__group.is-active .sidebar__title {
+    background: var(--color-info-bg);
+  }
+
+  .sidebar--collapsed .sidebar__empty {
+    display: none;
   }
 
   .content {

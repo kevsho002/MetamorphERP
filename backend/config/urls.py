@@ -18,6 +18,8 @@ api_v1 = [
     path("", include("apps.general_ids.urls")),
     path("", include("apps.scheduling.urls")),
     path("", include("apps.personnel_actions.urls")),
+    path("", include("apps.acd.urls")),
+    path("", include("apps.adherence.urls")),
 ]
 
 admin.site.site_header = "Metamorph ERP — Administración"

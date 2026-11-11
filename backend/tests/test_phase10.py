@@ -8,7 +8,7 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.personnel_actions.models import PersonnelAction
 from apps.scheduling import engine
-from apps.scheduling.models import LunchRule, PayCycle, PayPeriod, ScheduleAssignment
+from apps.scheduling.models import AttendanceCutoff, LunchRule, PayCycle, PayPeriod, ScheduleAssignment
 from tests.test_phase9 import hire
 
 pytestmark = pytest.mark.django_db
@@ -26,45 +26,45 @@ def test_bpo_half_month_crosses_months_and_is_contiguous():
     feb2 = next(p for p in periods if p["label"] == "2026-02-Q2")
     assert (feb2["period_start"], feb2["period_end"]) == (date(2026, 2, 25), date(2026, 3, 9))
     for a, b in zip(periods, periods[1:]):
-        assert (b["period_start"] - a["period_end"]).days == 1 and (b["cutoff_start"] - a["cutoff_end"]).days == 1
+        assert (b["period_start"] - a["period_end"]).days == 1
     assert engine.describe_rule(rule) == "Del 10 al 24 y del 25 al 9 del mes siguiente"
     monthly = engine.generate_periods(engine.CycleRule("MONTH", period_start_day=21), 2026)
     assert (monthly[0]["period_start"], monthly[0]["period_end"]) == (date(2026, 1, 21), date(2026, 2, 20))
 
 
 def test_seeded_bpo_cycle_and_sql_continuity_rules(api, hr_user):
+    """Fase 11: el ejemplo BPO paga por quincena calendario y corta la asistencia del 25 al 9 y del 10 al 24."""
     cycle = PayCycle.objects.get(code="SV_QUINCENAL_BPO")
-    assert not cycle.is_default and cycle.periods.count() == 24
+    assert not cycle.is_default and cycle.periods.count() == 24 and cycle.cutoffs.count() == 24
     last = cycle.periods.order_by("period_start").last()
-    assert (last.period_start, last.period_end) == (date(2026, 12, 25), date(2027, 1, 9))
+    assert (last.period_start, last.period_end) == (date(2026, 12, 16), date(2026, 12, 31))
 
     # Cerrar / reabrir un corte no se ve afectado por las reglas de continuidad
     api.force_login(hr_user)
-    first = cycle.periods.order_by("period_start").first()
-    assert api.post(f"{S}/pay-periods/{first.pk}/close/").status_code == 200
-    assert api.post(f"{S}/pay-periods/{first.pk}/reopen/").status_code == 200
+    first = cycle.cutoffs.order_by("cutoff_start").first()
+    assert api.post(f"{S}/cutoffs/{first.pk}/close/").status_code == 200
+    assert api.post(f"{S}/cutoffs/{first.pk}/reopen/").status_code == 200
 
-    # 50045: hueco contra el fin del periodo anterior
+    # 50045: hueco contra el fin del periodo de pago anterior
     with pytest.raises(DatabaseError) as exc, transaction.atomic():
-        PayPeriod.objects.create(cycle=cycle, code="GAP", period_start=date(2027, 1, 12), period_end=date(2027, 1, 24),
-                                 cutoff_start=date(2027, 1, 10), cutoff_end=date(2027, 1, 24), payment_date=date(2027, 1, 24))
+        PayPeriod.objects.create(cycle=cycle, code="GAP", period_start=date(2027, 1, 3), period_end=date(2027, 1, 15),
+                                 payment_date=date(2027, 1, 15))
     assert "50045" in str(exc.value)
 
 
 def test_cutoff_window_gap_is_rejected_by_sql_server():
     cycle = PayCycle.objects.get(code="SV_QUINCENAL_BPO")
-    with pytest.raises(DatabaseError) as exc, transaction.atomic():
-        PayPeriod.objects.create(cycle=cycle, code="CUT", period_start=date(2027, 1, 10), period_end=date(2027, 1, 24),
-                                 cutoff_start=date(2027, 1, 12), cutoff_end=date(2027, 1, 24), payment_date=date(2027, 1, 24))
+    dec2 = cycle.periods.get(code="2026-12-Q2")
+    with pytest.raises(DatabaseError) as exc, transaction.atomic():  # el último corte cierra el 24/12
+        AttendanceCutoff.objects.create(cycle=cycle, pay_period=dec2, code="CUT", cutoff_start=date(2026, 12, 27), cutoff_end=date(2026, 12, 30))
     assert "50046" in str(exc.value)
 
 
 def test_period_model_validation_explains_continuity():
     cycle = PayCycle.objects.get(code="SV_QUINCENAL_BPO")
-    p = PayPeriod(cycle=cycle, code="X", period_start=date(2027, 1, 5), period_end=date(2027, 1, 24),
-                  cutoff_start=date(2027, 1, 10), cutoff_end=date(2027, 1, 24), payment_date=date(2027, 1, 24))
+    p = PayPeriod(cycle=cycle, code="X", period_start=date(2027, 1, 5), period_end=date(2027, 1, 15), payment_date=date(2027, 1, 15))
     errors = p.continuity_errors()
-    assert "se cruza con 2026-12-Q2" in errors["period_start"] and "10/01/2027" in errors["period_start"]
+    assert "deja un hueco después de 2026-12-Q2" in errors["period_start"] and "01/01/2027" in errors["period_start"]
 
 
 def test_rule_change_generates_transition_period_without_gaps(api, hr_user):
@@ -110,10 +110,11 @@ def test_pay_cycles_grouped_by_year_without_repeating_cross_year_periods(api, hr
     y2026 = api.get(f"{S}/pay-cycles/", {"year": 2026}).json()
     assert 2026 in y2026["years"]
     bpo = next(c for c in y2026["results"] if c["code"] == "SV_QUINCENAL_BPO")
-    assert bpo["crosses_month"] and bpo["rule_description"].startswith("Del 10 al 24")
-    assert bpo["stats"]["total"] == 24 and bpo["periods"][-1]["crosses_month"]
+    assert bpo["cutoffs_cross_month"] and bpo["cutoff_rule_description"].startswith("Del 10 al 24")
+    assert bpo["stats"]["total"] == 24 and bpo["stats"]["cutoffs"] == 24
+    assert bpo["periods"][0]["cutoffs"][0]["crosses_month"]  # el corte 25/12–09/01 se paga en la quincena 1–15 de enero
     y2027 = api.get(f"{S}/pay-cycles/", {"year": 2027}).json()
-    assert all(not c["periods"] for c in y2027["results"])  # 25/12/2026–09/01/2027 pertenece a 2026
+    assert all(not c["periods"] for c in y2027["results"])
     monthly = api.get(f"{S}/pay-cycles/", {"year": 2026, "frequency": "MONTHLY"}).json()
     assert [c["code"] for c in monthly["results"]] == ["SV_MENSUAL"]
 
@@ -217,7 +218,7 @@ def test_day_detail_shows_blocks_including_previous_day_overnight(api, hr_user):
     assert [b["from_previous_day"] for b in body["blocks"]] == [True, False]
     assert body["summary"]["scheduled_minutes"] == 337 + 113
     assert body["assignments"][0]["folio"] and body["night_rule"]["start"] == "19:00"
-    assert body["period"]["cycle"] == "SV_MENSUAL" and body["lunch_rules"]
+    assert body["period"]["cycle"] == "SV_MENSUAL" and body["cutoff"]["code"] == "C-2026-10" and body["lunch_rules"]
     assert api.get(f"{S}/employees/{emp.employee_code}/days/2026-13-45/").status_code == 400
 
 

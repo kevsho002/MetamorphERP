@@ -6,10 +6,11 @@ import { schedulingApi } from "../api.js";
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 /**
- * Ciclos de pago y cortes operativos internos, AGRUPADOS POR AÑO (Fase 10). Cada periodo pertenece al año en que
- * inicia (un corte BPO del 25/12 al 09/01 es del año que termina), así no se repite. Los ciclos se agrupan por
- * frecuencia (quincenal, mensual, semanal) y sus periodos por mes, plegados salvo el ciclo con el corte en curso.
- * Los ciclos (día de inicio, fin de la primera quincena, corte y pago) se parametrizan en /admin/.
+ * Ciclos de pago, agrupados por año y frecuencia (Fase 10) con DOS dimensiones independientes (Fase 11):
+ * - Periodo de PAGO: fechas oficiales de devengo y pago (1–15 / 16–fin).
+ * - Corte interno de ASISTENCIA: ventana en la que se cuentan las horas (p. ej. 25–9 / 10–24); se cierra y reabre.
+ * Cada corte aparece junto al periodo de pago que lo paga (el que contiene su fecha de cierre). Las reglas se
+ * parametrizan en /admin/ › Ciclos de pago.
  */
 export default function PayCyclesPage() {
   const [params, setParams] = useSearchParams();
@@ -73,8 +74,9 @@ export default function PayCyclesPage() {
         <div>
           <h1 className="page-title">Ciclos de pago y cortes</h1>
           <p className="muted page-subtitle">
-            Los periodos pueden cruzar de un mes al siguiente (p. ej. del 10 al 24 y del 25 al 9): solo se exige que cada uno inicie el día siguiente
-            al fin del anterior, sin huecos ni colisiones. Se parametrizan en /admin/ › Horarios, tiempo y cortes.
+            El <strong>periodo de pago</strong> fija las fechas oficiales de devengo y pago; el <strong>corte de asistencia</strong> es la ventana en
+            la que se cuentan las horas y puede cruzar de mes (p. ej. del 25 al 9 y del 10 al 24). Cada dimensión se valida por separado (sin
+            huecos ni colisiones) y cada corte se paga en el periodo que contiene su fecha de cierre. Se parametrizan en /admin/ › Ciclos de pago.
           </p>
         </div>
       </header>
@@ -133,8 +135,8 @@ export default function PayCyclesPage() {
               canManage={canManage}
               busy={busy}
               onGenerate={() => act(`gen-${c.code}`, () => schedulingApi.generatePeriods(c.code, year))}
-              onClose={(p) => act(`p-${p.id}`, () => schedulingApi.closePeriod(p.id))}
-              onReopen={(p) => act(`p-${p.id}`, () => schedulingApi.reopenPeriod(p.id))}
+              onClose={(x) => act(`c-${x.id}`, () => schedulingApi.closeCutoff(x.id))}
+              onReopen={(x) => act(`c-${x.id}`, () => schedulingApi.reopenCutoff(x.id))}
             />
           ))}
         </section>
@@ -159,47 +161,60 @@ function CycleCard({ cycle: c, year, today, canManage, busy, onGenerate, onClose
         <span className="cycle-card__title">
           {c.name} <code className="small">{c.code}</code>
           {c.is_default && <span className="badge badge--ok">Predeterminado</span>}
-          {c.crosses_month && <span className="badge badge--info">Cruza de mes</span>}
+          {c.cutoffs_cross_month && <span className="badge badge--info">Cortes que cruzan de mes</span>}
+        </span>
+        <span className="cycle-card__rules">
+          <span>
+            <strong>Pago:</strong> {c.rule_description}
+            {c.payment_lag_days ? ` · se paga ${c.payment_lag_days} día(s) después del fin` : " · se paga el último día"}
+          </span>
+          <span>
+            <strong>Asistencia:</strong> {c.cutoff_rule_description}
+          </span>
         </span>
         <span className="muted small">
-          {c.country} · {c.rule_description} · corte {c.cutoff_lag_days ? `${c.cutoff_lag_days} día(s) antes del fin` : "al fin del periodo"} · pago{" "}
-          {c.payment_lag_days ? `${c.payment_lag_days} día(s) después` : "el último día"} · {c.stats.total} periodo(s), {c.stats.closed} cerrado(s)
-          {c.stats.current && ` · en curso: ${c.stats.current}`}
+          {c.country} · {c.stats.total} periodo(s) de pago · {c.stats.cutoffs} corte(s), {c.stats.closed} cerrado(s)
+          {c.stats.current && ` · corte en curso: ${c.stats.current}`}
+          {c.stats.periods_without_cutoff > 0 && ` · ${c.stats.periods_without_cutoff} periodo(s) sin corte`}
         </span>
       </summary>
       {canManage && (
         <div className="form-actions form-actions--start">
           <button type="button" className="button button--sm" disabled={busy === `gen-${c.code}`} onClick={onGenerate}>
-            {busy === `gen-${c.code}` ? "Generando…" : `Generar periodos ${year}`}
+            {busy === `gen-${c.code}` ? "Generando…" : `Generar periodos y cortes ${year}`}
           </button>
         </div>
       )}
       {c.periods.length === 0 ? (
-        <p className="muted small">
-          Sin periodos en {year}.
-          {c.preview.length > 0 &&
-            ` Se generarían, por ejemplo: ${c.preview.map((p) => `${p.label} (${formatDate(p.period_start)}–${formatDate(p.period_end)})`).join(" · ")}…`}
-        </p>
+        <div className="muted small">
+          <p>Sin periodos en {year}. Se generarían, por ejemplo:</p>
+          <ul className="cycle-preview">
+            {c.preview.map((p) => (
+              <li key={p.label}>
+                <strong>{p.label}</strong> {formatDate(p.period_start)}–{formatDate(p.period_end)}, pago {formatDate(p.payment_date)}
+                {p.cutoffs.map((x) => ` · asistencia ${formatDate(x.cutoff_start)}–${formatDate(x.cutoff_end)}`).join("")}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table cycle-table">
             <thead>
               <tr>
-                <th scope="col">Mes de inicio</th>
-                <th scope="col">Periodo</th>
-                <th scope="col">Fechas del periodo</th>
-                <th scope="col">Ventana de asistencia (corte)</th>
+                <th scope="col">Mes</th>
+                <th scope="col">Periodo de pago</th>
                 <th scope="col">Pago</th>
-                <th scope="col">Estado</th>
+                <th scope="col">Corte(s) de asistencia que paga</th>
                 <th scope="col">
-                  <span className="sr-only">Acciones</span>
+                  <span className="sr-only">Acciones del periodo</span>
                 </th>
               </tr>
             </thead>
             {byMonth.map(([month, periods]) => (
               <tbody key={month} className="cycle-month">
                 {periods.map((p, i) => (
-                  <tr key={p.id} className={p.cutoff_start <= today && today <= p.cutoff_end ? "row--current" : undefined}>
+                  <tr key={p.id} className={p.period_start <= today && today <= p.period_end ? "row--current" : undefined}>
                     {i === 0 && (
                       <th scope="rowgroup" rowSpan={periods.length} className="cycle-month__label">
                         {MONTHS[month - 1]}
@@ -207,34 +222,50 @@ function CycleCard({ cycle: c, year, today, canManage, busy, onGenerate, onClose
                     )}
                     <td>
                       <code>{p.code}</code>
-                    </td>
-                    <td>
-                      {formatDate(p.period_start)} – {formatDate(p.period_end)}
-                      {p.crosses_month && <span className="badge badge--info shift-grid__badge">cruza de mes</span>}
-                    </td>
-                    <td>
-                      {formatDate(p.cutoff_start)} – {formatDate(p.cutoff_end)}
+                      <div className="small">
+                        {formatDate(p.period_start)} – {formatDate(p.period_end)}
+                      </div>
                     </td>
                     <td>{formatDate(p.payment_date)}</td>
                     <td>
-                      <span className={`badge ${p.status === "CLOSED" ? "badge--muted" : "badge--ok"}`}>{p.status_label}</span>
-                      {p.closed_by && <span className="muted small"> por {p.closed_by}</span>}
+                      {p.cutoffs.length === 0 ? (
+                        <span className="badge badge--warn">Sin corte</span>
+                      ) : (
+                        <ul className="cutoff-list">
+                          {p.cutoffs.map((x) => (
+                            <li key={x.id} className={x.cutoff_start <= today && today <= x.cutoff_end ? "cutoff-list__item--current" : undefined}>
+                              <code>{x.code}</code> {formatDate(x.cutoff_start)} – {formatDate(x.cutoff_end)}
+                              {x.crosses_month && <span className="badge badge--info shift-grid__badge">cruza de mes</span>}{" "}
+                              <span className={`badge ${x.status === "CLOSED" ? "badge--muted" : "badge--ok"}`}>{x.status_label}</span>
+                              {x.closed_by && <span className="muted small"> por {x.closed_by}</span>}
+                              <span className="gid-actions">
+                                <Link className="link-button" to={`/scheduling/report?cutoff=${x.id}`}>
+                                  Horas del corte
+                                </Link>
+                                {canManage && x.status === "OPEN" && x.cutoff_end < today && (
+                                  <button type="button" className="link-button" disabled={Boolean(busy)} onClick={() => onClose(x)}>
+                                    Cerrar corte
+                                  </button>
+                                )}
+                                {canManage && x.status === "CLOSED" && (
+                                  <button type="button" className="link-button" disabled={Boolean(busy)} onClick={() => onReopen(x)}>
+                                    Reabrir
+                                  </button>
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </td>
                     <td>
                       <span className="gid-actions">
                         <Link className="link-button" to={`/scheduling/report?period=${p.id}`}>
-                          Horas del corte
+                          Horas para planilla
                         </Link>
-                        {canManage && p.status === "OPEN" && p.cutoff_end < today && (
-                          <button type="button" className="link-button" disabled={Boolean(busy)} onClick={() => onClose(p)}>
-                            Cerrar corte
-                          </button>
-                        )}
-                        {canManage && p.status === "CLOSED" && (
-                          <button type="button" className="link-button" disabled={Boolean(busy)} onClick={() => onReopen(p)}>
-                            Reabrir
-                          </button>
-                        )}
+                        <a className="link-button" href={schedulingApi.payPeriodHoursCsvUrl(p.id)} download>
+                          CSV
+                        </a>
                       </span>
                     </td>
                   </tr>

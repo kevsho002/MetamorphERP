@@ -67,6 +67,8 @@ INSTALLED_APPS = [
     "apps.general_ids",
     "apps.scheduling",
     "apps.personnel_actions",
+    "apps.acd",
+    "apps.adherence",
     "apps.health",
     "apps.web",
 ]
@@ -218,6 +220,7 @@ LOGGING = {
         "apps.general_ids": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
         "apps.scheduling": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
         "apps.personnel_actions": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
+        "apps.acd": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
     },
 }
 

@@ -502,6 +502,10 @@ def date_range(start: date, end: date) -> Iterable[date]:
 
 
 # ---------------------------------------------------------------- ciclos de pago y cortes
+# Fase 11: dos dimensiones INDEPENDIENTES.
+#   * Periodo de pago (quincena / mes): fechas oficiales de devengo y pago (1–15 y 16–fin, pago el 15 y el último).
+#   * Corte interno de asistencia: ventana operativa en la que se cuentan las horas (puede cruzar de mes: 25–9 y
+#     10–24). Cada corte se MAPEA al periodo de pago más próximo: el que contiene la fecha en que el corte cierra.
 PERIOD_RULES = {
     "HALF_MONTH": "Quincenal (dos periodos por mes; admite cortes que cruzan de mes, p. ej. 10–24 y 25–9)",
     "MONTH": "Mensual (del día de inicio al día anterior del mes siguiente)",
@@ -517,7 +521,9 @@ class CycleRule:
     anchor_date: date | None = None
     cutoff_lag_days: int = 0
     payment_lag_days: int = 0
-    period_start_day: int = 1  # día del mes en que inicia el primer periodo (1 = calendario; 10 = cortes BPO 10–24 / 25–9)
+    period_start_day: int = 1  # día del mes en que inicia el primer periodo de pago (1 = calendario)
+    cutoff_start_day: int | None = None  # corte interno con ventanas PROPIAS (p. ej. 10 → 10–24 y 25–9); None = derivado
+    cutoff_first_end_day: int | None = None  # fin de la primera ventana del mes (24 en un corte 10–24 / 25–9)
 
 
 def _month_end(year: int, month: int) -> date:
@@ -540,6 +546,23 @@ def describe_rule(rule: CycleRule) -> str:
     if rule.period_rule == "FIXED_DAYS":
         return f"Bloques de {rule.length_days} días desde el {rule.anchor_date:%d/%m/%Y}" if rule.anchor_date else f"Bloques de {rule.length_days} días"
     return rule.period_rule
+
+
+def cutoff_window_rule(rule: CycleRule) -> CycleRule | None:
+    """Regla de las ventanas de asistencia cuando el ciclo las define con días propios (no derivadas del periodo)."""
+    if not rule.cutoff_start_day or rule.period_rule == "FIXED_DAYS":
+        return None
+    return CycleRule(period_rule=rule.period_rule, first_half_end_day=rule.cutoff_first_end_day or rule.first_half_end_day,
+                     period_start_day=rule.cutoff_start_day)
+
+
+def describe_cutoff_rule(rule: CycleRule) -> str:
+    own = cutoff_window_rule(rule)
+    if own:
+        return describe_rule(own)
+    if rule.cutoff_lag_days:
+        return f"Cierra {rule.cutoff_lag_days} día(s) antes del fin de cada periodo de pago"
+    return "Igual al periodo de pago"
 
 
 def _periods_between(rule: CycleRule, start: date, end: date) -> list[tuple[date, date, str]]:
@@ -587,31 +610,51 @@ def _periods_between(rule: CycleRule, start: date, end: date) -> list[tuple[date
 
 
 def generate_periods(rule: CycleRule, year: int) -> list[dict]:
-    """Periodos de pago del año con su corte operativo interno.
+    """PERIODOS DE PAGO que inician en el año: etiqueta, fechas de devengo y fecha de pago.
 
-    Corte interno: la asistencia de un periodo se cierra `cutoff_lag_days` días ANTES de que termine el
-    periodo. La ventana de asistencia (cutoff_start–cutoff_end) va del día siguiente al corte anterior
-    hasta el corte actual, de modo que las ventanas son contiguas y no se traslapan
-    (p. ej. quincena 16–30 nov con corte 5 días antes: asistencia del 11 al 25 de noviembre).
+    Los cortes internos de asistencia son otra dimensión: ver `cutoff_windows`.
     """
-    first, last = date(year, 1, 1), date(year, 12, 31)
-    previous = _periods_between(rule, first - timedelta(days=62), first - timedelta(days=1))
-    periods = _periods_between(rule, first, last)
-    prev_end = previous[-1][1] if previous else first - timedelta(days=1)
-    lag = timedelta(days=rule.cutoff_lag_days)
     out = []
-    week_counter = 0
-    for p_start, p_end, label in periods:
-        week_counter += 1
+    for n, (p_start, p_end, label) in enumerate(_periods_between(rule, date(year, 1, 1), date(year, 12, 31)), start=1):
         out.append({
-            "label": label or f"{p_start.year}-P{week_counter:02d}",
+            "label": label or f"{p_start.year}-P{n:02d}",
             "period_start": p_start,
             "period_end": p_end,
-            "cutoff_start": prev_end - lag + timedelta(days=1),
-            "cutoff_end": p_end - lag,
             "payment_date": p_end + timedelta(days=rule.payment_lag_days),
         })
-        prev_end = p_end
+    return out
+
+
+def period_containing(periods: list[dict], d: date) -> dict | None:
+    return next((p for p in periods if p["period_start"] <= d <= p["period_end"]), None)
+
+
+def cutoff_windows(rule: CycleRule, periods: list[dict]) -> list[dict]:
+    """CORTES INTERNOS de asistencia para una lista ordenada de periodos de pago (dicts con period_start / period_end /
+    label), cada uno mapeado al periodo de pago más próximo: el que CONTIENE la fecha de cierre del corte.
+
+    * Ventanas propias (`cutoff_start_day`): p. ej. 10 / 24 → del 25 al 9 (se paga en la quincena 1–15) y del 10 al 24
+      (se paga en la 16–fin). Las ventanas cruzan de mes; su cierre siempre cae en un periodo de pago.
+    * Derivadas (sin día propio): la asistencia cierra `cutoff_lag_days` días antes del fin de cada periodo y la
+      ventana va del día siguiente al cierre anterior (0 = igual al periodo).
+    Se omiten las ventanas cuyo cierre no cae en ninguno de los periodos recibidos.
+    """
+    if not periods:
+        return []
+    out = []
+    own = cutoff_window_rule(rule)
+    if own:
+        lo = periods[0]["period_start"] - timedelta(days=62)
+        for w_start, w_end, _label in _periods_between(own, lo, periods[-1]["period_end"]):
+            target = period_containing(periods, w_end)
+            if target:
+                out.append({"cutoff_start": w_start, "cutoff_end": w_end, "period": target})
+    else:
+        lag = timedelta(days=rule.cutoff_lag_days)
+        prev_end = periods[0]["period_start"] - timedelta(days=1)
+        for p in periods:
+            out.append({"cutoff_start": prev_end - lag + timedelta(days=1), "cutoff_end": p["period_end"] - lag, "period": p})
+            prev_end = p["period_end"]
     return out
 
 

@@ -301,7 +301,7 @@ def seed(apps, schema_editor):
         for p in engine.generate_periods(rule, 2026):
             PayPeriod.objects.create(
                 cycle=cycle, code=p["label"], period_start=p["period_start"], period_end=p["period_end"],
-                cutoff_start=p["cutoff_start"], cutoff_end=p["cutoff_end"], payment_date=p["payment_date"],
+                cutoff_start=p["period_start"], cutoff_end=p["period_end"], payment_date=p["payment_date"],  # corte = periodo (sin anticipación)
             )
 
 

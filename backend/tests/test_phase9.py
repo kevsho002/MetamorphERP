@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.hcm.models import Employee
 from apps.personnel_actions import services
 from apps.personnel_actions.models import ActionSignature, ActionType, ActionValue, PersonnelAction
-from apps.scheduling.models import PayPeriod, ScheduleAssignment
+from apps.scheduling.models import AttendanceCutoff, ScheduleAssignment
 from tests.test_employees import EMPLOYEES, IMPORTS, sv_row, to_csv
 
 pytestmark = pytest.mark.django_db
@@ -140,9 +140,9 @@ def test_schedule_action_requires_initial_and_respects_closed_cutoffs(api, hr_us
     assert r.status_code == 201 and r.json()["action"]["status"] == "APPROVED", r.json()
     assert legacy.employee_code not in [e["employee_code"] for e in api.get(f"{PA}/missing-initial/").json()["results"]]
 
-    period = PayPeriod.objects.get(cycle__code="SV_MENSUAL", code="2026-09")
-    period.status = "CLOSED"
-    period.save()
+    cutoff = AttendanceCutoff.objects.get(cycle__code="SV_MENSUAL", code="C-2026-09")
+    cutoff.status = "CLOSED"
+    cutoff.save()
     blocked = api.post(f"{PA}/validate/", {**body, "effective_date": "2026-09-15"}, format="json").json()
     assert any(e["code"] == "closed_period" for e in blocked["errors"])
 

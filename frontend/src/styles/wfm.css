@@ -1,0 +1,306 @@
+/* Fase 16 — Workforce: planificador de segmentos, línea de tiempo plan vs real y adherencia */
+:root {
+  --adh-actual: #475569;
+}
+
+/* ------------------------------------------------------------ línea de tiempo -- */
+.timeline {
+  min-width: 0;
+}
+
+.timeline__scale {
+  position: relative;
+  height: 18px;
+  margin-left: var(--timeline-label-w, 0px);
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}
+
+.timeline__tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline__lane {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 4px;
+}
+
+.adh-detail .timeline {
+  --timeline-label-w: 104px;
+}
+
+.timeline__lane-label {
+  flex: none;
+  width: calc(var(--timeline-label-w, 96px) - var(--space-2));
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.timeline__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.timeline__grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.timeline__block {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  min-width: 2px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--block-color);
+  color: #fff;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-align: left;
+}
+
+button.timeline__block {
+  cursor: pointer;
+}
+
+button.timeline__block:hover,
+button.timeline__block:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
+  z-index: 2;
+}
+
+.timeline__block.is-selected {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
+  z-index: 2;
+}
+
+.timeline__text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Contenedor del turno: marco; relleno con la actividad predeterminada: tono suave; segmento: color pleno. */
+.timeline__block--container {
+  top: 0;
+  bottom: 0;
+  border: 2px dashed var(--color-primary);
+  border-radius: 6px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.timeline__block--fill {
+  background: color-mix(in srgb, var(--block-color) 35%, var(--color-surface));
+  color: var(--color-text);
+}
+
+.timeline__block--segment {
+  z-index: 1;
+  box-shadow: 0 1px 2px rgb(15 30 50 / 0.25);
+}
+
+.timeline__block--justified {
+  background: repeating-linear-gradient(135deg, #94a3b8 0 6px, #cbd5e1 6px 12px);
+  color: var(--color-text);
+}
+
+/* ------------------------------------------------------------- planificador -- */
+.adh-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.adh-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.adh-new__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.planner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.planner__row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.planner__who {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.planner__who > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.planner__who strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.planner__warnings,
+.planner__row > .adh-edit {
+  grid-column: 2;
+  margin: 0;
+}
+
+.adh-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+}
+
+.adh-edit input:not([type]) {
+  min-width: 0;
+  flex: 1 1 140px;
+}
+
+/* --------------------------------------------------------------- adherencia -- */
+.adh-kpis {
+  margin-bottom: var(--space-3);
+}
+
+.adh-pct--ok {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.adh-pct--warn {
+  color: var(--color-warn-fg);
+  font-weight: 700;
+}
+
+.adh-pct--bad {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.adh-day td:first-child {
+  padding-left: calc(var(--space-3) * 2);
+}
+
+.adh-detail {
+  margin-top: var(--space-4, 24px);
+}
+
+.adh-detail__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* ------------------------------------------------------------- actividades -- */
+.adh-rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.adh-rules li + li {
+  margin-top: 2px;
+}
+
+.adh-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+.adh-rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.adh-rule-editor__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.adh-rule-editor__row select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .planner__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planner__warnings,
+  .planner__row > .adh-edit {
+    grid-column: 1;
+  }
+}
+
+.adh-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.adh-kpis dd {
+  font-size: 1.3rem;
+  white-space: nowrap;
+}

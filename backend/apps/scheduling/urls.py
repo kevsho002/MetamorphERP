@@ -19,6 +19,7 @@ urlpatterns = [
     path(f"{P}/report/", views.HoursReportView.as_view(), name="sch-report"),
     path(f"{P}/pay-cycles/", views.PayCyclesView.as_view(), name="sch-pay-cycles"),
     re_path(rf"^{P}/pay-cycles/(?P<code>[A-Za-z][A-Za-z0-9_\-]{{0,29}})/generate/$", views.PayCycleGenerateView.as_view(), name="sch-pay-cycle-generate"),
-    path(f"{P}/pay-periods/<int:pk>/close/", views.PayPeriodStatusView.as_view(), name="sch-pay-period-close"),
-    path(f"{P}/pay-periods/<int:pk>/reopen/", views.PayPeriodStatusView.as_view(target="OPEN"), name="sch-pay-period-reopen"),
+    path(f"{P}/pay-periods/<int:pk>/hours/", views.PayPeriodHoursView.as_view(), name="sch-pay-period-hours"),
+    path(f"{P}/cutoffs/<int:pk>/close/", views.CutoffStatusView.as_view(), name="sch-cutoff-close"),
+    path(f"{P}/cutoffs/<int:pk>/reopen/", views.CutoffStatusView.as_view(target="OPEN"), name="sch-cutoff-reopen"),
 ]

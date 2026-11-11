@@ -87,6 +87,21 @@ class MeView(APIView):
         return Response(CurrentUserSerializer(request.user).data, headers=NO_STORE)
 
 
+class MyPhotoView(APIView):
+    """GET /auth/me/photo/ — foto de perfil del propio usuario (avatar de la barra superior), sin requerir hcm.view."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.employees import digital_files
+        from apps.employees.views import _image_response
+
+        photo = digital_files.current_photo(request.user.employee) if request.user.employee_id else None
+        if photo is None:
+            return Response({"detail": "Su usuario no tiene fotografía de perfil."}, status=status.HTTP_404_NOT_FOUND)
+        return _image_response(photo, cache="private, max-age=86400")
+
+
 class PasswordChangeView(APIView):
     permission_classes = [IsAuthenticated]
     allow_pending_password_change = True

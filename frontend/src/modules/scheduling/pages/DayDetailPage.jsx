@@ -154,11 +154,24 @@ export default function DayDetailPage() {
           <h2 className="section-title">Contexto de nómina y parámetros</h2>
           <dl className="detail-list">
             <div>
-              <dt>Corte de nómina</dt>
+              <dt>Corte de asistencia</dt>
+              <dd>
+                {d.cutoff ? (
+                  <>
+                    <Link to={`/scheduling/report?cutoff=${d.cutoff.id}&search=${d.employee_code}`}>{d.cutoff.code}</Link>
+                    {` · ${formatDate(d.cutoff.cutoff_start)}–${formatDate(d.cutoff.cutoff_end)} · ${d.cutoff.status_label.toLowerCase()}`}
+                  </>
+                ) : (
+                  "Ningún corte de asistencia cubre esta fecha"
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Periodo de pago</dt>
               <dd>
                 {d.period
-                  ? `${d.period.cycle} ${d.period.code} · asistencia ${formatDate(d.period.cutoff_start)}–${formatDate(d.period.cutoff_end)} · ${d.period.status_label.toLowerCase()}`
-                  : "Sin periodo generado para esta fecha"}
+                  ? `${d.period.cycle} ${d.period.code} · ${formatDate(d.period.period_start)}–${formatDate(d.period.period_end)} · pago el ${formatDate(d.period.payment_date)}`
+                  : "—"}
               </dd>
             </div>
             <div>

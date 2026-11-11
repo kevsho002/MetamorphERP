@@ -190,10 +190,12 @@ function WeekView({ code, refreshKey }) {
       {state.error && <p className="error-box">{state.error}</p>}
       {data && (
         <>
-          {data.periods.length > 0 && (
+          {data.cutoffs?.length > 0 && (
             <p className="muted small">
-              Corte(s):{" "}
-              {data.periods.map((p) => `${p.cycle} ${p.code} (asistencia ${formatDate(p.cutoff_start)}–${formatDate(p.cutoff_end)}, ${p.status_label.toLowerCase()})`).join(" · ")}
+              Corte(s) de asistencia:{" "}
+              {data.cutoffs
+                .map((c) => `${c.cycle} ${c.code} (${formatDate(c.cutoff_start)}–${formatDate(c.cutoff_end)}, se paga en ${c.pay_period.code}, ${c.status_label.toLowerCase()})`)
+                .join(" · ")}
             </p>
           )}
           <div className="table-wrap" aria-busy={state.loading}>

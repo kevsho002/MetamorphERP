@@ -7,6 +7,7 @@ import { rosterModule } from "../modules/roster/index.js";
 import { generalIdsModule } from "../modules/generalIds/index.js";
 import { schedulingModule } from "../modules/scheduling/index.js";
 import { personnelActionsModule } from "../modules/personnelActions/index.js";
+import { acdModule } from "../modules/acd/index.js";
 import { systemModule } from "../modules/system/index.js";
 
 /**
@@ -14,7 +15,7 @@ import { systemModule } from "../modules/system/index.js";
  * Cada módulo exporta { id, label, basePath, routes[] } y se monta aquí;
  * el menú lateral se genera a partir de este mismo arreglo.
  */
-export const modules = [hcmModule, rosterModule, generalIdsModule, personnelActionsModule, schedulingModule, wfmModule, payrollModule, systemModule];
+export const modules = [hcmModule, rosterModule, generalIdsModule, personnelActionsModule, schedulingModule, acdModule, wfmModule, payrollModule, systemModule];
 
 export const router = createBrowserRouter([
   {

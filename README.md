@@ -15,6 +15,10 @@ En producción Django sirve también el build de React (un solo despliegue, mism
 | 8 | Horarios y tiempo: turnos parametrizables en JSON (`lunch_minutes` = solo duración), asignación por fechas efectivas sin traslapes, tiempo evaluado por fecha de ocurrencia (turnos que cruzan la medianoche), nocturnidad parametrizable por país, ciclos de pago y cortes operativos internos, reporte de horas teóricas vs reales |
 | 9 | Acciones de Personal (AP) EAV: folio único, fecha efectiva, justificación, estado y firmas digitales por rol; horarios atómicos por día (inicio, fin, almuerzo, horas diurnas y nocturnas) en lugar de turnos predefinidos; Primera AP de asignación de horario obligatoria en el alta |
 | 10 | Correcciones BPO: ciclos con cortes que cruzan de mes (10–24 / 25–9) validando solo la continuidad contra el periodo anterior; carga manual de tiempos retirada (base lista para un Web Timer interno); ciclos agrupados por año y frecuencia; varios bloques y varias AP el mismo día con almuerzo opcional y reglas de almuerzo por país; fechas de ocurrencia enlazadas a un desglose diario |
+| 11 | Periodos de pago y cortes internos de asistencia desacoplados (dos tablas con sus propias reglas de traslape; cada corte se mapea al periodo de pago que contiene su cierre; horas de planilla por periodo = suma de sus cortes); módulo ACD estilo Genesys Cloud: estados operativos, auxiliares y sub-auxiliares, acceso por grupo de agentes, consola del agente con hora del servidor, tablero en vivo, reporte con el formato de exportación de Genesys y envío del tiempo pagado como horas reales (WEB_TIMER) |
+| 14 | Barra superior estilo Genesys Cloud (botón «Iniciar Tiempo en Turno», avatar circular con el indicador del estado ACD y lista unificada de estados → auxiliares → sub-auxiliares en cascada por hover/clic) y menú lateral colapsable con pin y expansión automática por hover |
+| 15 | Dropdown de estados: altura máxima con scroll interno en el panel y en los submenús, y submenús en cascada posicionados dentro de los límites de la ventana |
+| 16 | Segmentos de actividad dentro del turno (contenedor de la AP), validación de pago / billing (auxiliar primario vs secundarios pagados), motor de adherencia con Out of Adherence y Unpaid Excess Login, justificaciones respaldadas por AP aprobada |
 
 ```
 MetamorphERP/
@@ -62,11 +66,14 @@ MetamorphERP/
 │   │   ├── operations/             # Fase 7: catálogos operativos ops_client / ops_brand / ops_line_of_business / ops_sub_line_of_business
 │   │   ├── general_ids/            # Fase 7: General IDs (herramientas, tipos, IDs por empleado con vigencia; trigger + vista)
 │   │   ├── personnel_actions/      # Fase 9: Acciones de Personal (tipos EAV, firmas por rol, efecto horario / salario)
-│   │   ├── scheduling/             # Fases 8–10: horarios vigentes (por AP), nocturnidad, almuerzo, ciclos/cortes, tiempo por fecha de ocurrencia
+│   │   ├── acd/                    # Fase 11: estados y auxiliares ACD (Genesys Cloud), grupos, sesiones, segmentos, reporte
+│   │   │   └── migrations/         #   0001 tablas acd_*; 0002 FKs + triggers 50060–50062 + vistas + catálogos de referencia
+│   │   ├── scheduling/             # Fases 8–11: horarios vigentes (por AP), nocturnidad, almuerzo, periodos de pago y cortes, tiempo
 │   │   │   ├── engine.py           #   motor puro: bloques por día, división por día calendario, almuerzo, nocturnidad, periodos
 │   │   │   ├── fields.py           #   WallClockDateTimeField: hora local de la operación, sin conversión a UTC
 │   │   │   └── migrations/         #   0001 tablas; 0002 FKs + triggers 50040–50044 + vistas; 0003 parámetros de referencia;
-│   │   │                           #   0005–0006 (Fase 10) reglas de almuerzo, modo de asignación, triggers 50045–50047
+│   │   │                           #   0005–0006 (Fase 10) reglas de almuerzo, modo de asignación, triggers 50045–50047;
+│   │   │                           #   0007–0009 (Fase 11) sch_attendance_cutoff, triggers 50043–50049, vistas de planilla
 │   │   ├── roster/                 # Fase 6: roster operativo (dominio independiente de la ficha)
 │   │   │   ├── models.py           #   RosterDimension/Item (jerarquías), RosterAttribute (EAV), RosterAssignment (temporal)
 │   │   │   ├── services.py         #   reglas temporales: cortes por fecha efectiva, «Now», correcciones sin borrar
@@ -98,7 +105,8 @@ MetamorphERP/
         ├── roster/                 # Fase 6: RosterPanel (pestaña del expediente), RosterField, consulta cruzada
         ├── generalIds/             # Fase 7: GeneralIdsPanel (pestaña del expediente), consulta y buscador de IDs
         ├── personnelActions/       # Fase 9: bandeja, detalle con firmas, nueva AP (EAV), WeeklyScheduleEditor, pestaña del expediente
-        ├── scheduling/             # Fases 8–10: SchedulePanel (pestaña «Horario»), reporte, desglose diario, cortes por año
+        ├── scheduling/             # Fases 8–11: SchedulePanel (pestaña «Horario»), reporte, desglose diario, periodos y cortes
+        ├── acd/                    # Fase 11: consola del agente, agentes en vivo, reporte de estados, grupos y auxiliares
         └── {wfm,payroll,system}/
 ```
 
@@ -112,7 +120,8 @@ MetamorphERP/
 | `dbo.sys_platform_settings`, `sys_user_session`, `sys_audit_event` | migraciones de Django (Fase 5) | modelos administrados |
 | `dbo.roster_dimension`, `roster_dimension_item`, `roster_attribute`, `roster_assignment`, vista `vw_RosterAssignment` | migraciones de Django (Fase 6) | modelos administrados |
 | `dbo.hcm_bank`; `ops_client`, `ops_brand`, `ops_line_of_business`, `ops_sub_line_of_business`, vista `vw_OpsClientBrand`; `gid_source_tool`, `gid_id_type`, `gid_id_type_client`, `gid_id_type_brand`, `gid_employee_general_id`, vista `vw_EmployeeGeneralId` | migraciones de Django (Fase 7) | modelos administrados |
-| `dbo.sch_schedule_assignment`, `sch_night_rule`, `sch_lunch_rule`, `sch_pay_cycle`, `sch_pay_period`, `sch_time_record`, `sch_time_record_day`; vistas `vw_SchTimeByOccurrenceDate`, `vw_SchScheduleAssignment`, `vw_SchScheduleDay`, `vw_SchPayPeriod`, `vw_SchLunchRule` | migraciones de Django (Fases 8–10) | modelos administrados |
+| `dbo.sch_schedule_assignment`, `sch_night_rule`, `sch_lunch_rule`, `sch_pay_cycle`, `sch_pay_period`, `sch_attendance_cutoff`, `sch_time_record`, `sch_time_record_day`; vistas `vw_SchTimeByOccurrenceDate`, `vw_SchScheduleAssignment`, `vw_SchScheduleDay`, `vw_SchPayPeriod`, `vw_SchAttendanceCutoff`, `vw_SchPayrollHours`, `vw_SchLunchRule` | migraciones de Django (Fases 8–11) | modelos administrados |
+| `dbo.acd_division`, `acd_primary_status`, `acd_aux_code`, `acd_agent_group`, `acd_group_aux`, `acd_agent_member`, `acd_agent_session`, `acd_status_segment`; vistas `vw_AcdStatusSegment`, `vw_AcdAgentSession` | migraciones de Django (Fase 11) | modelos administrados |
 | `dbo.pa_action_type`, `pa_action_attribute`, `pa_approval_step`, `pa_action`, `pa_action_value`, `pa_action_signature`, `pa_folio_sequence`; vista `vw_PersonnelAction` | migraciones de Django (Fase 9) | modelos administrados |
 
 `accounts.0002` y `employees.0002` crean FKs reales hacia tablas SQL-first (`hcm.Employee`, `core.catCountry`,
@@ -575,31 +584,34 @@ horario ya aplicado, ni caer en un corte cerrado. No hay altas ni ediciones manu
   con su norma.
 * El reporte muestra los minutos nocturnos y su **equivalente de recargo** en minutos (no calcula montos).
 
-### Ciclos de pago y cortes operativos internos
+### Ciclos de pago: periodos de pago y cortes internos de asistencia (Fase 11)
 
-* `/admin/` › Ciclos de pago: país, frecuencia (igual que la ficha: mensual / quincenal / semanal) y regla del
-  periodo:
-  * `HALF_MONTH`: dos periodos por mes. «Día de inicio» 1 y «fin de la primera quincena» 15 = calendario (1–15 y
-    16–fin). Con 10 y 24 = **corte BPO que cruza de mes**: del 10 al 24 y del 25 al 9 del mes siguiente (Fase 10).
-  * `MONTH`: del día de inicio al día anterior del mes siguiente (1 = mes calendario).
-  * `FIXED_DAYS`: bloques de N días desde una fecha ancla (semanal = 7, catorcenal = 14).
-* **Corte interno**: `cutoff_lag_days` días antes del fin del periodo. La ventana de asistencia va del día
-  siguiente al corte anterior hasta el corte actual, así que las ventanas son contiguas. Ejemplo: quincena 16–30
-  nov con corte 5 días antes → asistencia del 11 al 25 nov.
-* Fecha de pago: `payment_lag_days` después del fin.
-* «Generar periodos» crea los del año (los existentes, incluidos los ajustados a mano, no se tocan). Cada periodo
-  nuevo continúa el día siguiente al último existente: si la regla cambió (p. ej. de 1–15 a 10–24), el primero se
-  recorta o se adelanta para no dejar huecos ni colisiones. Saltarse un año entero se rechaza.
-* Un **corte cerrado** bloquea cambios de horarios y registros de tiempo en su ventana. Para un ajuste se
-  reabre el corte, y queda auditado.
-* Triggers **50043** / **50044** (colisión de periodos / ventanas de corte) y, desde la Fase 10, **50045** / **50046**:
-  cada periodo y su ventana de corte deben iniciar el día siguiente al fin del periodo anterior del ciclo. No se
-  valida el mes: los cortes pueden cruzar de un mes al otro. Cerrar o reabrir un corte no dispara estas reglas.
-* Cada periodo pertenece al **año en que inicia** (el corte del 25/12 al 09/01 es del año que termina): la pantalla
-  de ciclos se agrupa por año y por frecuencia, con los periodos por mes y plegados.
-* Semilla: ciclos `SV_QUINCENAL` y `SV_MENSUAL` con los periodos de 2026, sin corte anticipado. Ajuste
-  `cutoff_lag_days` según la operación. Fase 10: ejemplo `SV_QUINCENAL_BPO` (10–24 / 25–9) con 2026, **no**
-  predeterminado.
+Dos dimensiones **independientes**, cada una en su tabla y con sus propias reglas de traslape:
+
+| | Periodo de pago (`sch_pay_period`) | Corte interno de asistencia (`sch_attendance_cutoff`) |
+|---|---|---|
+| Qué es | Fechas oficiales de devengo y pago | Ventana operativa en la que se cuentan las horas |
+| Ejemplo BPO | 1–15 (pago el 15) y 16–fin (pago el último día) | 25 del mes anterior al 9, y del 10 al 24 |
+| Regla (`/admin/` › Ciclos de pago) | `period_rule`, día de inicio, fin de la primera quincena, `payment_lag_days` | `cutoff_start_day` + `cutoff_first_end_day` (ventanas propias) o `cutoff_lag_days` (derivadas: N días antes del fin del periodo; 0 = igual al periodo) |
+| SQL Server | **50043** colisión · **50045** hueco / colisión contra el periodo anterior | **50044** colisión · **50046** hueco / colisión contra el corte anterior · **50049** fechas de un corte cerrado |
+| Estado | — | Abierto / cerrado (bloquea horarios y tiempos en su ventana) |
+
+* **Mapeo**: cada corte se paga en el periodo de pago **más próximo**: el que contiene su fecha de cierre (el corte
+  25/12–09/01 se paga en la quincena 1–15 de enero; el 10–24 en la 16–fin). SQL Server lo exige (**50048**) al guardar
+  un corte y al cambiar las fechas de un periodo.
+* **Motor de horas para planilla**: las horas de un periodo de pago son las de los cortes mapeados a él
+  (`GET /pay-periods/{id}/hours/`, CSV, y `dbo.vw_SchPayrollHours` por empleado × corte × periodo). Un día que cae en
+  la quincena 1–15 pero en el corte 10–24 se paga en la quincena siguiente.
+* `PayCycle.period_rule`: `HALF_MONTH` (dos periodos por mes), `MONTH` (del día de inicio al anterior del mes
+  siguiente) o `FIXED_DAYS` (bloques de N días desde una fecha ancla; su corte siempre es derivado).
+* «Generar periodos y cortes» crea, por separado, los periodos de pago del año y los cortes que se pagan en ellos.
+  Lo existente (incluido lo ajustado a mano) no se toca; cada uno continúa el día siguiente al último de su misma
+  dimensión (un cambio de regla produce un periodo / corte de transición). Saltarse un año entero se rechaza.
+* Cada periodo pertenece al **año en que inicia**; la pantalla agrupa por año y frecuencia y muestra junto a cada
+  periodo de pago los cortes que paga, con cierre y reapertura por corte.
+* Migración de datos (0008): cada ventana de corte que existía en los periodos se copió como corte (`C-<periodo>`),
+  con su estado y ajustes manuales. El ejemplo `SV_QUINCENAL_BPO` quedó como pago 1–15 / 16–fin y asistencia
+  25–9 / 10–24 (**no** predeterminado: márquelo como tal y desmarque `SV_QUINCENAL` si la operación lo usa).
 * El ciclo de un empleado es el predeterminado de su país y frecuencia de pago.
 
 ### React
@@ -608,9 +620,10 @@ horario ya aplicado, ni caer en un corte cerrado. No hay altas ni ediciones manu
   historial por AP, botones «Nueva AP de cambio de horario» y «Asignación adicional», y la semana del empleado por
   fecha de ocurrencia.
 * Menú **Horarios y tiempo**:
-  * Horas teóricas vs reales: por rango libre o por corte, con filtros, tolerancia, totales por empleado y CSV
-    (cada fila muestra la o las AP de horario de origen).
-  * Ciclos de pago y cortes: por año y frecuencia; generar periodos, cerrar y reabrir.
+  * Horas teóricas vs reales: por rango libre, por periodo de pago (sus cortes o sus fechas oficiales) o por un
+    corte, con filtros, tolerancia, totales por empleado y CSV (cada fila muestra la o las AP de horario de origen).
+  * Ciclos de pago y cortes: por año y frecuencia; cada periodo de pago con los cortes que paga; generar, cerrar y
+    reabrir cortes; «Horas para planilla» y su CSV.
 * **Desglose diario** (`/scheduling/employees/:ID/days/:fecha`, Fase 10): toda fecha de ocurrencia del reporte y de
   la semana del expediente es un enlace. Muestra los bloques que aportan horas ese día (AP, principal o adicional,
   fecha de turno, porción del día, almuerzo, nocturnas), el tiempo registrado, el corte, la nocturnidad, las reglas
@@ -629,13 +642,15 @@ horario ya aplicado, ni caer en un corte cerrado. No hay altas ni ediciones manu
 | GET | `/employees/{ID}/timeline/?from=&to=` | schedules.view |
 | GET | `/time-records/` (consulta) | schedules.view |
 | POST · DELETE | `/time-records/` · `/time-records/{pk}/` · `/time-records/upload/` — **403** mientras la carga manual esté retirada | schedules.manage |
-| GET | `/report/?from=&to=` o `?period=&basis=cutoff\|period`, `country`, `flag`, `tolerance`, `search`, `export=csv` | schedules.view |
-| POST | `/pay-cycles/{code}/generate/` `{year}` · `/pay-periods/{id}/close/` · `/reopen/` | payroll.manage |
+| GET | `/report/?from=&to=` o `?period=&basis=cutoff\|period` o `?cutoff=`, `country`, `flag`, `tolerance`, `search`, `export=csv` | schedules.view |
+| GET | `/pay-periods/{id}/hours/` (`?export=csv`): horas para planilla = suma de los cortes mapeados | schedules.view |
+| POST | `/pay-cycles/{code}/generate/` `{year}` · `/cutoffs/{id}/close/` · `/cutoffs/{id}/reopen/` | payroll.manage |
 
 Para Power BI / SQL: `dbo.vw_SchTimeByOccurrenceDate` (tiempo real por fecha de ocurrencia, con turno de origen,
 recargo y corte), `dbo.vw_SchScheduleAssignment` (horario vigente con el folio de su AP), `dbo.vw_SchScheduleDay`
 (una fila por **bloque** de cada día, con inicio, fin, almuerzo, minutos diurnos / nocturnos y tipo de asignación),
-`dbo.vw_SchPayPeriod` y `dbo.vw_SchLunchRule`.
+`dbo.vw_SchPayPeriod` (periodo de pago con el resumen de sus cortes), `dbo.vw_SchAttendanceCutoff`,
+`dbo.vw_SchPayrollHours` y `dbo.vw_SchLunchRule`.
 Las horas **teóricas por día calendario** las calcula el motor (endpoint `/report/` y su CSV), porque un turno que
 cruza la medianoche reparte sus horas entre dos fechas.
 
@@ -729,6 +744,146 @@ sección **Primera AP de asignación de horario** en el alta. Vista SQL: `dbo.vw
 * Semilla de referencia SV: bloques de 6 h o más → 30 min, en modo advertencia. **Valide el umbral y la duración con
   Legal / Planilla.**
 
+## Estados y auxiliares ACD (Fase 11)
+
+Modelo y flujo estilo **Genesys Cloud** (`apps/acd`, tablas `acd_*`).
+
+### Catálogos (`/admin/` › Estados y auxiliares ACD)
+
+* **Estados operativos** (presencias primarias, códigos fijos): Offline, Available, On Queue (tiempo productivo), Busy,
+  Away, Break, Meal (no pagado), Meeting, Training, Idle. Se ajustan etiqueta del reporte, nombre, color y si cuentan
+  como sesión, productivo o pagado.
+* **Auxiliares** (presencias secundarias) bajo un estado primario y **sub-auxiliares** de un solo nivel (Coaching →
+  Calidad / Supervisor), con pagado, productivo, máximo de minutos por uso y «restringido por grupo». SQL Server:
+  **50062** (un nivel y mismo estado que el padre).
+* **Divisiones** (Division Id = UUID estable, Division Name).
+* Semilla de referencia: división «Home», los 10 estados, 11 auxiliares comunes de BPO (Break, Personal, Lunch, ACW,
+  Back Office, System Issue, Coaching y sus 2 sub-auxiliares, Team Meeting, Training) y el grupo `GENERAL` sin agentes.
+  Ajústelos a la operación.
+
+### Grupos / perfiles de agentes (menú ACD › Grupos y auxiliares, WFM)
+
+* Cada grupo tiene división y **auxiliares permitidos**: un auxiliar restringido solo lo ven y usan los grupos con
+  acceso; dar acceso al padre incluye sus sub-auxiliares. Los no restringidos los ven todos.
+* Un agente pertenece a **un** grupo activo (índice único filtrado). Moverlo o retirarlo requiere que no tenga sesión
+  abierta.
+
+### Flujo del agente (menú ACD › Mi estado)
+
+* **Iniciar sesión** → Available. **On Queue** = tiempo productivo. O un estado con su auxiliar / sub-auxiliar
+  permitido. **Cerrar sesión** → Offline.
+* Cada cambio cierra el segmento anterior y abre otro con la **hora del servidor** en UTC con milisegundos (Start Time,
+  End Time, Duration): el navegador no envía horas. Un solo segmento y una sola sesión abiertos por agente; sin
+  traslapes (**50060**); el auxiliar pertenece al estado del segmento (**50061**).
+* Al cerrar sesión, el tiempo **pagado** (sin Meal ni auxiliares no pagados) se envía a horarios como registros
+  `WEB_TIMER` (hora local, al minuto): son las horas reales del reporte teórico vs real y de los cortes de planilla.
+  Si un corte de asistencia está cerrado, la sesión queda «con error» y el detalle se ve en la consola y en
+  `vw_AcdAgentSession`, sin deshacer el cierre de sesión.
+* Supervisión (ACD › Agentes en vivo): estado y tiempo en estado por agente, alertas al exceder el máximo de un
+  auxiliar y cierre de sesión forzado (queda como origen «Supervisor» con su motivo).
+
+### Reporte de estados (formato de exportación de Genesys Cloud)
+
+Columnas: `Interval Start`, `Interval End`, `Interval Complete`, `Employee Id`, `Employee Name`, `Division Id`,
+`Division Name`, `Start Time`, `End Time`, `Primary Status`, `Secondary Status`, `Duration`.
+
+* `Duration` en **milisegundos**; horas ISO-8601 con milisegundos y desfase de la zona elegida (`tz`, por defecto
+  `America/El_Salvador`), p. ej. `2026-10-06T08:15:00.000-06:00`.
+* Intervalos de 30 min, 1 h, día o todo el rango: cada segmento se recorta a cada intervalo que toca.
+  `Interval Complete` = `TRUE` si el intervalo ya terminó. Un segmento en curso sale sin `End Time`, con la duración
+  hasta ahora. `Secondary Status` de un sub-auxiliar = «Padre - Nombre» (p. ej. `Coaching - Calidad`).
+* `Employee Id` = ID corporativo. CSV en UTF-8 con BOM (Excel). Máximo 31 días por consulta.
+* SQL: `dbo.vw_AcdStatusSegment` (un segmento por fila, horas UTC) y `dbo.vw_AcdAgentSession`.
+
+### Permisos y API (`/api/v1/acd`)
+
+| Permiso | Roles |
+|---------|-------|
+| `acd.agent` (consola) | todos (el Administrador técnico sin expediente no puede ser agente) |
+| `acd.view` (tablero, reporte, grupos) | Administrador, RRHH, WFM |
+| `acd.manage` (grupos, acceso, agentes, cierre forzado) | Administrador, WFM |
+
+| Método | Ruta | Permiso |
+|--------|------|---------|
+| GET | `/catalogs/` | acd.view |
+| GET · POST | `/me/` · `/me/login/` · `/me/status/` `{primary_status, aux_code}` · `/me/logout/` | acd.agent |
+| GET | `/agents/?group=&division=&status=&search=` | acd.view |
+| POST | `/agents/{ID}/logout/` `{reason}` | acd.manage |
+| GET | `/report/?from=&to=&interval=30\|60\|1440\|range&tz=&group=&division=&employee=&status=&export=csv` | acd.view |
+| GET · POST · PATCH | `/groups/` · `/groups/{code}/` `{name, division, is_active, aux_codes}` | view · manage |
+| POST · DELETE | `/groups/{code}/members/` `{employee_code}` · `/groups/{code}/members/{ID}/` | acd.manage |
+
+## Barra superior y menú lateral (Fase 14)
+
+* **Barra superior** (`components/layout/UserPresenceMenu.jsx`), a la derecha:
+  * **Botón de turno**: «Iniciar Tiempo en Turno» abre la sesión ACD (Available). En turno muestra el tiempo de la
+    sesión y «Finalizar» (pide confirmación y pasa a Offline). Solo aparece para usuarios con expediente, permiso
+    `acd.agent` y grupo ACD activo; sin grupo queda deshabilitado con el motivo.
+  * **Avatar circular**: foto de perfil del expediente (o iniciales) con un anillo y un punto del color del estado
+    actual. La foto la sirve `GET /api/v1/auth/me/photo/` (solo la propia, sin requerir `hcm.view`); `/auth/me/`
+    incluye `photo_url`.
+  * **Clic en el avatar**: panel con el estado actual y su cronómetro (rojo si excede el máximo del auxiliar), la
+    **lista unificada** de estados y los enlaces de cuenta (consola del agente, «Finalizar turno y salir del sistema»,
+    «Salir sin finalizar el turno»). Los estados con auxiliares despliegan un **submenú en cascada** al pasar el cursor
+    (o con clic / Enter / ← en teclado y pantallas táctiles); un auxiliar con sub-auxiliares abre un tercer nivel. Cada
+    submenú incluye «sin auxiliar». En pantallas ≤ 640 px los submenús se abren en línea (acordeón).
+* **Estado compartido** (`modules/acd/AgentPresenceContext.jsx`): la barra y la consola «Mi estado» usan el mismo
+  estado (`/acd/me/`), refrescado cada 60 s con la pestaña visible y al volver a ella; cualquier cambio se ve en ambos.
+  Los avisos de cada cambio aparecen como notificación bajo la barra.
+* **Menú lateral** (`components/layout/Sidebar.jsx`), en escritorio (≥ 900 px):
+  * **Pin**: el botón en la cabecera del menú (o ☰) alterna entre menú fijo (248 px) y contraído (barra de íconos de
+    60 px). La preferencia se recuerda en el navegador (`localStorage`).
+  * **Expansión por hover**: contraído, al pasar el cursor (o al llegar con Tab) se expande sobre el contenido mostrando
+    etiquetas y submenús, y se contrae al salir; Escape lo cierra. El ícono del módulo activo queda resaltado.
+  * El contenido usa el ancho restante (`minmax(0, 1fr)`): al fijar o contraer el menú, tablas y formularios se
+    reacomodan sin desbordar la página (las tablas anchas desplazan dentro de su contenedor).
+  * En móvil el menú sigue siendo el panel deslizable de ☰.
+* **Límites del dropdown (Fase 15)**: el panel del avatar nunca es más alto que el espacio bajo la barra
+  (`max-height` + scroll interno propio, sin desplazar la página). Los submenús en cascada (`Flyout` en
+  `UserPresenceMenu.jsx`) son `position: fixed` y se colocan contra la ventana: se abren a la izquierda y, si no caben,
+  a la derecha; suben para no salirse por abajo, siguen a su elemento al desplazar el panel y, si tienen más elementos
+  que la altura de la ventana, hacen scroll dentro del submenú. En móvil siguen en línea dentro del panel.
+
+## Segmentos de actividad y adherencia (Fase 16)
+
+App `apps.adherence` (tablas `adh_*`), pantallas en **Workforce (WFM)**. Ver: `wfm.view`; editar: `wfm.manage`
+(rol WFM y Administrador; RRHH solo consulta).
+
+* **Contenedor y segmentos.** El contenedor de cada agente es el bloque entrada-salida de su horario vigente
+  (`sch_schedule_assignment`, creado por la AP de horario). En **Planificador de segmentos** WFM inserta segmentos
+  preconfigurados (`adh_schedule_segment`: inicio, fin y actividad) para uno o varios agentes y un rango de fechas:
+  Break, Almuerzo, Capacitación, Coaching, Back Office, Reunión… El tiempo del contenedor que no cubre ningún segmento
+  es de la **actividad predeterminada** (Producción). Un segmento siempre queda dentro del contenedor de su fecha de
+  turno (en un turno nocturno 22:00–06:00, «02:00» es el día siguiente), no se traslapa con otro (servicio + SQL
+  **50070**) y no se toca en fechas de un corte de asistencia cerrado. Si el horario trae minutos de almuerzo sin
+  segmento de almuerzo programado, el planificador lo advierte.
+* **Actividades** (`adh_activity_type` + `adh_activity_status`): por actividad, si es pagada, si es facturable
+  (billing), su color, duración sugerida y **qué estados / auxiliares ACD la cumplen**, con su rol:
+  * **Auxiliar primario** = trabajo principal (On Queue en Producción, Busy · Back Office en Back Office…).
+  * **Auxiliar secundario pagado** = auxiliar permitido y pagado por diseño del segmento (Busy · ACW dentro de
+    Producción). Un auxiliar padre incluye sus sub-auxiliares (Coaching → Coaching - Calidad).
+* **Motor de adherencia** (`apps/adherence/engine.py`, sin BD): cruza plan vs estados reales del ACD / Web Timer
+  (UTC → hora local de la operación) segundo a segundo:
+  * Dentro del contenedor, estado permitido por la actividad del momento → **en adherencia**; si no, **Out of
+    Adherence** (también si está programado y sin sesión).
+  * **Válido para pago**: tiempo dentro del contenedor en estado pagado (o auxiliar secundario pagado).
+    **Facturable**: además en adherencia y en actividad facturable. Se separan *trabajo principal* y *auxiliares
+    secundarios pagados*.
+  * Sesión **fuera** de todo contenedor → **Unpaid Excess Login** (no se paga).
+  * **Adherencia %** = en adherencia / (programado − programado justificado). **Conformidad %** = con sesión dentro del
+    contenedor / programado. Solo se evalúa hasta la hora actual.
+* **Justificaciones (AP)** (`adh_exception`): ventana ligada a una AP **aprobada** del mismo empleado (servicio + SQL
+  **50071**); ese tiempo no se marca como desviación y se paga si así se indica. Se agrega el tipo de AP de referencia
+  **AP_JUSTIFICACION_TIEMPO** (permiso, cita médica, misión oficial, falla de sistema, tiempo extra autorizado; firmas
+  WFM → RRHH).
+* **Adherencia** (pantalla): KPIs, tabla por agente y día, y detalle con la línea de tiempo programado / real /
+  desviaciones. **Guardar resultados** persiste los días terminados (`adh_adherence_day` + `adh_deviation`) para
+  nómina y control de calidad; omite las fechas de cortes cerrados.
+* **SQL Server**: `dbo.vw_AdhScheduleSegment`, `dbo.vw_AdhAdherenceDay` (con corte de asistencia y periodo de pago) y
+  `dbo.vw_AdhDeviation`.
+* API: `/api/v1/adherence/` → `catalogs`, `activities`, `planner`, `segments` (+ `bulk`), `exceptions`, `report`,
+  `detail`, `compute` (detalle en `apps/adherence/views.py`).
+
 ## Fuera de alcance (por ahora)
 * JWT / SSO (la API usa sesión + CSRF; el SPA no maneja tokens).
 * Restablecimiento de contraseña por correo (no hay servicio de correo; el reseteo lo hace RRHH/Administración).
@@ -745,5 +900,7 @@ sección **Primera AP de asignación de horario** en el alta. Vista SQL: `dbo.vw
 * Programación exacta del almuerzo y descansos (responsabilidad operativa de WFM) y feriados.
 * AP masivas (un cambio de horario para muchos colaboradores a la vez) y jerarquía por jefe inmediato (hoy las firmas
   se asignan por rol).
-* Web Timer interno (marcación) y terminar antes de tiempo una asignación adicional (hoy rige hasta su
-  `vigente_hasta`; para extenderla se elabora otra AP adicional).
+* Terminar antes de tiempo una asignación adicional (hoy rige hasta su `vigente_hasta`; para extenderla se elabora
+  otra AP adicional).
+* ACD: integración con una plataforma de telefonía real (colas, interacciones, ACW automático), estado Idle por
+  inactividad y cierre automático de sesiones abandonadas (hoy el supervisor las cierra desde el tablero).

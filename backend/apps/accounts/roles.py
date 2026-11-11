@@ -37,6 +37,9 @@ class Perm:
     SCHEDULES_MANAGE = "schedules.manage"
     ACTIONS_VIEW = "actions.view"  # Fase 9: Acciones de Personal (AP); firmar depende del ROL de cada paso
     ACTIONS_CREATE = "actions.create"
+    ACD_AGENT = "acd.agent"  # Fase 11: consola del agente (iniciar sesión, On Queue, auxiliares de su grupo)
+    ACD_VIEW = "acd.view"  # tablero de agentes y reporte de estados (formato Genesys Cloud)
+    ACD_MANAGE = "acd.manage"  # grupos, acceso a auxiliares, agentes por grupo, cierre de sesión forzado
     SELF_SERVICE = "self.view"
     SYSTEM_STATUS = "system.status"
 
@@ -68,6 +71,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             Perm.SCHEDULES_MANAGE,
             Perm.ACTIONS_VIEW,
             Perm.ACTIONS_CREATE,
+            Perm.ACD_AGENT,
+            Perm.ACD_VIEW,
+            Perm.ACD_MANAGE,
             Perm.SELF_SERVICE,
             Perm.SYSTEM_STATUS,
         }
@@ -78,14 +84,15 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             Perm.HCM_VIEW, Perm.HCM_MANAGE, Perm.WFM_VIEW, Perm.PAYROLL_VIEW, Perm.PAYROLL_MANAGE,
             Perm.ROSTER_VIEW, Perm.ROSTER_MANAGE, Perm.GENERAL_IDS_VIEW, Perm.GENERAL_IDS_MANAGE,
             Perm.SCHEDULES_VIEW, Perm.SCHEDULES_MANAGE, Perm.ACTIONS_VIEW, Perm.ACTIONS_CREATE, Perm.SELF_SERVICE,
+            Perm.ACD_AGENT, Perm.ACD_VIEW,
         }
     ),
     Role.WFM: frozenset({
         Perm.HCM_VIEW, Perm.WFM_VIEW, Perm.WFM_MANAGE, Perm.ROSTER_VIEW, Perm.ROSTER_MANAGE,
         Perm.GENERAL_IDS_VIEW, Perm.GENERAL_IDS_MANAGE, Perm.SCHEDULES_VIEW, Perm.SCHEDULES_MANAGE,
-        Perm.ACTIONS_VIEW, Perm.ACTIONS_CREATE, Perm.SELF_SERVICE,
+        Perm.ACTIONS_VIEW, Perm.ACTIONS_CREATE, Perm.SELF_SERVICE, Perm.ACD_AGENT, Perm.ACD_VIEW, Perm.ACD_MANAGE,
     }),
-    Role.EMPLOYEE: frozenset({Perm.SELF_SERVICE}),
+    Role.EMPLOYEE: frozenset({Perm.SELF_SERVICE, Perm.ACD_AGENT}),
 }
 
 # Qué roles puede otorgar/administrar cada rol (prevención de escalamiento de privilegios):

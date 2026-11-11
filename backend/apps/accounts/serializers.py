@@ -58,13 +58,23 @@ class CurrentUserSerializer(UserSerializer):
 
     permissions = serializers.SerializerMethodField()
     is_superuser = serializers.BooleanField(read_only=True)
+    photo_url = serializers.SerializerMethodField()
 
     class Meta(UserSerializer.Meta):
-        fields = [*UserSerializer.Meta.fields, "is_superuser", "permissions"]
+        fields = [*UserSerializer.Meta.fields, "is_superuser", "permissions", "photo_url"]
         read_only_fields = fields
 
     def get_permissions(self, obj) -> list[str]:
         return sorted(user_permissions(obj))
+
+    def get_photo_url(self, obj) -> str | None:
+        """Foto de perfil del expediente vinculado (avatar de la barra superior); la sirve /auth/me/photo/."""
+        if not obj.employee_id:
+            return None
+        from apps.employees.digital_files import current_photo
+
+        photo = current_photo(obj.employee)
+        return f"/api/v1/auth/me/photo/?v={photo.document_id}" if photo else None
 
 
 class _UserWriteMixin(serializers.Serializer):

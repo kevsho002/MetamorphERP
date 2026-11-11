@@ -16,6 +16,7 @@ export default function HoursReportPage() {
   const filters = useMemo(
     () => ({
       period: params.get("period") ?? "",
+      cutoff: params.get("cutoff") ?? "",
       basis: params.get("basis") ?? "cutoff",
       from: params.get("from") ?? monday,
       to: params.get("to") ?? addDays(params.get("from") ?? monday, 6),
@@ -38,10 +39,11 @@ export default function HoursReportPage() {
     Object.entries(next).forEach(([k, v]) => {
       if (v !== "" && v !== null && !(k === "page" && v === 1) && !(k === "basis" && !next.period) && !(k === "tolerance" && v === "0")) query[k] = String(v);
     });
-    if (next.period) {
+    if (next.period || next.cutoff) {
       delete query.from;
       delete query.to;
     }
+    if (next.cutoff) delete query.basis;
     setParams(query, { replace: true });
   };
 
@@ -63,10 +65,12 @@ export default function HoursReportPage() {
 
   const query = useMemo(() => {
     const q = { ...filters, page_size: PAGE_SIZE };
-    if (filters.period) {
+    if (filters.period || filters.cutoff) {
       delete q.from;
       delete q.to;
-    } else delete q.basis;
+    }
+    if (!filters.period || filters.cutoff) delete q.basis;
+    if (!filters.cutoff) delete q.cutoff;
     return q;
   }, [filters]);
 
@@ -99,28 +103,45 @@ export default function HoursReportPage() {
       </header>
 
       <div className="filters" role="search">
-        <label className="field">
-          <span className="field__label">Corte de nómina</span>
-          <select value={filters.period} onChange={(e) => update({ period: e.target.value })}>
-            <option value="">Rango libre</option>
-            {periodsState.cycles.map((c) => (
-              <optgroup key={c.code} label={`${c.name} (${c.country})`}>
-                {c.periods.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} · asistencia {formatDate(p.cutoff_start)}–{formatDate(p.cutoff_end)}
-                    {p.status === "CLOSED" ? " · cerrado" : ""}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-        {filters.period ? (
+        {filters.cutoff ? (
+          <div className="field">
+            <span className="field__label">Corte de asistencia</span>
+            <span className="chip-row">
+              <span className="badge badge--info">
+                {data?.cutoff
+                  ? `${data.cutoff.code} · ${formatDate(data.cutoff.cutoff_start)}–${formatDate(data.cutoff.cutoff_end)} · se paga en ${data.cutoff.pay_period.code}`
+                  : `Corte #${filters.cutoff}`}
+              </span>
+              <button type="button" className="link-button" onClick={() => update({ cutoff: "" })}>
+                Quitar
+              </button>
+            </span>
+          </div>
+        ) : (
+          <label className="field">
+            <span className="field__label">Periodo de pago</span>
+            <select value={filters.period} onChange={(e) => update({ period: e.target.value })}>
+              <option value="">Rango libre</option>
+              {periodsState.cycles.map((c) => (
+                <optgroup key={c.code} label={`${c.name} (${c.country})`}>
+                  {c.periods.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} · pago {formatDate(p.payment_date)}
+                      {p.cutoff_start ? ` · asistencia ${formatDate(p.cutoff_start)}–${formatDate(p.cutoff_end)}` : " · sin corte"}
+                      {p.status === "CLOSED" ? " · cerrado" : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        )}
+        {filters.cutoff ? null : filters.period ? (
           <label className="field">
             <span className="field__label">Fechas</span>
             <select value={filters.basis} onChange={(e) => update({ basis: e.target.value })}>
-              <option value="cutoff">Ventana del corte (asistencia)</option>
-              <option value="period">Fechas del periodo de pago</option>
+              <option value="cutoff">Cortes de asistencia que se pagan en el periodo</option>
+              <option value="period">Fechas oficiales del periodo de pago</option>
             </select>
           </label>
         ) : (

@@ -143,6 +143,8 @@ class AuditEvent(models.Model):
         GENERAL_IDS = "GIDS", "General IDs"
         SCHEDULING = "SCHED", "Horarios, tiempo y cortes"
         PERSONNEL_ACTIONS = "PA", "Acciones de personal"
+        ACD = "ACD", "Estados y auxiliares ACD"
+        WFM = "WFM", "Segmentos y adherencia (WFM)"
         SYSTEM = "SYSTEM", "Parámetros del sistema"
 
     occurred_at = models.DateTimeField("fecha y hora", default=timezone.now, db_index=True)
