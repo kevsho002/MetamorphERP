@@ -15,6 +15,7 @@ from apps.system.models import AuditEvent, PlatformSettings, UserSession
 _AUDITED_FIELDS = (
     "idle_timeout_minutes", "max_session_hours", "max_sessions_per_user", "idle_warning_seconds",
     "maintenance_mode", "maintenance_message", "announcement", "announcement_level", "max_document_mb",
+    "brand_palette", "brand_accent", "ap_full_scope_roles",
 )
 
 
@@ -31,6 +32,10 @@ class PlatformSettingsAdmin(admin.ModelAdmin):
             "Control del cliente web",
             {"fields": ("maintenance_mode", "maintenance_message", "announcement", "announcement_level", "max_document_mb")},
         ),
+        ("Apariencia corporativa (Fases 22 y 23)", {"fields": ("brand_palette", "brand_accent"),
+                                                    "description": "Paleta global por defecto del ERP y de este panel; cada usuario "
+                                                                   "puede personalizar la suya en Sistema › Apariencia."}),
+        ("Acciones de personal (Fase 23)", {"fields": ("ap_full_scope_roles",)}),
         ("Registro", {"fields": ("updated_at", "updated_by")}),
     )
     readonly_fields = ("updated_at", "updated_by")

@@ -391,7 +391,7 @@ button.timeline__block:focus-visible {
 .iex-strip__arrow:hover:not(:disabled),
 .iex-strip__arrow:focus-visible {
   border-color: var(--color-primary);
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   outline: none;
 }
 
@@ -626,12 +626,12 @@ button.timeline__block:focus-visible {
 .iex-filters .sidebar__pin:hover,
 .iex-filters .sidebar__pin:focus-visible {
   background: var(--color-bg);
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   border-color: var(--color-border);
 }
 
 .iex-filters .sidebar__pin.is-pinned {
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
 }
 
 .iex-filters__title {
@@ -667,13 +667,13 @@ button.timeline__block:focus-visible {
 .iex-filters__rail-btn:hover,
 .iex-filters__rail-btn:focus-visible {
   background: var(--color-bg);
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   outline: none;
 }
 
 .iex-filters__rail-btn.is-on {
   background: var(--color-info-bg);
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
 }
 
 .iex-filters__rail-btn.is-on::after {
@@ -843,7 +843,7 @@ button.timeline__block:focus-visible {
 .gantt__audit:focus-visible {
   border-color: var(--color-border);
   background: var(--color-surface);
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   outline: none;
 }
 
@@ -1326,7 +1326,7 @@ button.timeline__block:focus-visible {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
 }
 
 .audit-drawer__title {
@@ -1350,7 +1350,7 @@ button.timeline__block:focus-visible {
 .audit-drawer__close:hover,
 .audit-drawer__close:focus-visible {
   border-color: var(--color-primary);
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   outline: none;
 }
 

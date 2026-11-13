@@ -18,7 +18,9 @@ def test_expected_tables_cover_sql_first_and_django():
     assert "core.catCostCenter" in tables
     assert "dbo.accounts_customuser" in tables
     assert "dbo.django_session" in tables
-    assert len([t for t in tables if not t.startswith("dbo.")]) == 20  # 19 de la Fase 1 + catCostCenter
+    # 19 de la Fase 1 + catCostCenter − las 8 tablas wfm.* del mock de asistencias (retiradas en la Fase 22)
+    assert len([t for t in tables if not t.startswith("dbo.")]) == 12
+    assert not any(t.startswith("wfm.") for t in tables)
 
 
 def test_db_health_returns_503_when_database_is_unreachable(api):

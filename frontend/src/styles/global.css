@@ -126,32 +126,6 @@ code {
   display: none; /* el pin solo aplica en escritorio */
 }
 
-/* Fase 21: selector global del formato de tiempo (HH:MM:SS u horas decimales). */
-.time-format {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: inherit;
-  opacity: 0.95;
-}
-
-.time-format + .presence {
-  margin-left: 0;
-}
-
-.time-format select {
-  padding: 3px 6px;
-  font-size: 0.8rem;
-}
-
-@media (max-width: 640px) {
-  .time-format__label {
-    display: none;
-  }
-}
-
 .sidebar--open {
   transform: translateX(0);
   box-shadow: 4px 0 16px rgb(0 0 0 / 0.12);
@@ -221,7 +195,7 @@ code {
   flex: none;
   width: 20px;
   height: 20px;
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
 }
 
 .sidebar__icon--text {
@@ -339,12 +313,12 @@ code {
   .sidebar__pin:hover,
   .sidebar__pin:focus-visible {
     background: var(--color-bg);
-    color: var(--color-primary);
+    color: var(--color-primary-ink, var(--color-primary));
     border-color: var(--color-border);
   }
 
   .sidebar__pin.is-pinned {
-    color: var(--color-primary);
+    color: var(--color-primary-ink, var(--color-primary));
   }
 
   /* Contraído: solo íconos; el texto y los enlaces quedan ocultos pero enfocables (el foco expande el menú). */
@@ -559,5 +533,5 @@ code {
 
 .button--ghost {
   background: none;
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
 }

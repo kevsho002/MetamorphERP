@@ -1,0 +1,121 @@
+{% extends "admin/base.html" %}
+{% load static %}
+{% comment %}
+  Fase 23 — Django Admin con la identidad del ERP: logotipo de letras blancas en la barra, favicon de la mariposa y la
+  MISMA paleta efectiva del portal React (personal del usuario o, en su defecto, la global; apps/system/theme.py).
+  El modo día / noche sigue la preferencia del perfil (Sistema › Apariencia) y el selector propio del admin.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block dark-mode-vars %}
+  {% if metamorph_theme %}
+  <script>
+    (function () {
+      // Preferencia del perfil del ERP → selector de tema del admin (light | dark | auto).
+      var pref = "{{ metamorph_theme.theme|escapejs }}";
+      var mode = pref === "dark" || pref === "light" ? pref : "auto";
+      try {
+        if (sessionStorage.getItem("metamorph.adminThemeSynced") !== mode) {
+          localStorage.setItem("theme", mode);
+          sessionStorage.setItem("metamorph.adminThemeSynced", mode);
+        }
+      } catch (e) { /* almacenamiento bloqueado */ }
+    })();
+  </script>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  {% if metamorph_theme %}
+  <style>
+    :root,
+    html[data-theme="light"] {
+      --primary: {{ metamorph_theme.accent }};
+      --secondary: {{ metamorph_theme.primary }};
+      --accent: {{ metamorph_theme.accent_soft }};
+      --primary-fg: #fff;
+      --header-bg: {{ metamorph_theme.primary }};
+      --header-color: #f1f5f9;
+      --header-branding-color: #fff;
+      --header-link-color: #fff;
+      --breadcrumbs-bg: {{ metamorph_theme.accent }};
+      --breadcrumbs-fg: #fff;
+      --breadcrumbs-link-fg: #fff;
+      --link-fg: {{ metamorph_theme.accent }};
+      --link-hover-color: {{ metamorph_theme.primary }};
+      --link-selected-fg: {{ metamorph_theme.primary }};
+      --button-bg: {{ metamorph_theme.primary }};
+      --button-hover-bg: {{ metamorph_theme.accent }};
+      --default-button-bg: {{ metamorph_theme.accent }};
+      --default-button-hover-bg: {{ metamorph_theme.primary }};
+      --selected-row: {{ metamorph_theme.accent_soft }};
+      --object-tools-bg: {{ metamorph_theme.primary }};
+      --object-tools-hover-bg: {{ metamorph_theme.accent }};
+    }
+    html[data-theme="dark"] {
+      --primary: {{ metamorph_theme.accent_dark }};
+      --secondary: {{ metamorph_theme.primary_dark }};
+      --header-bg: {{ metamorph_theme.primary_dark }};
+      --breadcrumbs-bg: {{ metamorph_theme.primary }};
+      --link-fg: {{ metamorph_theme.accent_dark }};
+      --link-hover-color: #fff;
+      --link-selected-fg: {{ metamorph_theme.accent_dark }};
+      --button-bg: {{ metamorph_theme.primary }};
+      --button-hover-bg: {{ metamorph_theme.accent }};
+      --default-button-bg: {{ metamorph_theme.accent }};
+      --default-button-hover-bg: {{ metamorph_theme.primary }};
+      --selected-row: {{ metamorph_theme.accent_soft_dark }};
+      --object-tools-bg: {{ metamorph_theme.primary }};
+      --object-tools-hover-bg: {{ metamorph_theme.accent }};
+    }
+    @media (prefers-color-scheme: dark) {
+      html[data-theme="auto"] {
+        --primary: {{ metamorph_theme.accent_dark }};
+        --secondary: {{ metamorph_theme.primary_dark }};
+        --header-bg: {{ metamorph_theme.primary_dark }};
+        --breadcrumbs-bg: {{ metamorph_theme.primary }};
+        --link-fg: {{ metamorph_theme.accent_dark }};
+        --link-hover-color: #fff;
+        --button-bg: {{ metamorph_theme.primary }};
+        --button-hover-bg: {{ metamorph_theme.accent }};
+        --default-button-bg: {{ metamorph_theme.accent }};
+        --default-button-hover-bg: {{ metamorph_theme.primary }};
+        --selected-row: {{ metamorph_theme.accent_soft_dark }};
+      }
+    }
+  {% endif %}
+  {% if not metamorph_theme %}<style>{% endif %}
+    #header { padding-top: 6px; padding-bottom: 6px; }
+    #branding { display: flex; align-items: center; gap: 12px; }
+    #site-name a { display: inline-flex; align-items: center; gap: 12px; color: var(--header-branding-color); }
+    #site-name img { display: block; height: 34px; width: auto; }
+    #site-name .mm-admin-label { padding-left: 12px; border-left: 1px solid rgb(255 255 255 / 0.35); font-size: 0.95rem;
+      font-weight: 400; letter-spacing: 0.02em; }
+    @media (max-width: 767px) { #site-name img { height: 26px; } #site-name .mm-admin-label { display: none; } }
+  </style>
+{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <link rel="icon" href="{% static 'brand/favicon.ico' %}" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'brand/favicon-32.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'brand/apple-touch-icon.png' %}">
+  {% if metamorph_theme %}<meta name="theme-color" content="{{ metamorph_theme.primary }}">{% endif %}
+{% endblock %}
+
+{% block branding %}
+<div id="site-name">
+  <a href="{% url 'admin:index' %}" aria-label="{{ site_header|default:_('Django administration') }}">
+    <img src="{% static 'brand/app_header_logo.png' %}" alt="Metamorph ERP" width="136" height="34">
+    <span class="mm-admin-label">Administración</span>
+  </a>
+</div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

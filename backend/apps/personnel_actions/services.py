@@ -12,7 +12,11 @@ Ciclo de vida:  DRAFT (borrador, editable) -> PENDING (enviada: contenido SELLAD
     SCHEDULE  aplica el horario atómico por día desde la fecha efectiva. Modo PRINCIPAL: cierra el principal
               vigente el día previo. Modo ADICIONAL (Fase 10): se suma al principal hasta «vigente_hasta»
               (turno partido / doble asignación); los bloques no pueden pedir las mismas horas;
-    SALARY    actualiza el salario base (si la fecha efectiva es futura, lo aplica `apply_due_actions`);
+    SALARY    actualiza el salario base (si la fecha efectiva es futura, lo aplica `apply_due_actions`) y, si la AP
+              trae campos del roster (p. ej. el puesto), también el roster (Fase 22);
+    ROSTER    (Fase 22) promoción / cambio organizacional: actualiza el roster temporal y el expediente;
+    JUSTIFY   (Fase 22) justificación de tiempo: segmento en la grilla + justificación de adherencia;
+    LEAVE     (Fase 22) permiso con / sin goce: cubre el día laborable completo (o por horas) de cada día del rango;
     NONE      solo registro.
 * AP fundacional: la «Primera AP de asignación de horario» se crea en el alta de cada empleado
   (`create_initial_schedule_action`), con fecha efectiva = fecha de ingreso.
@@ -43,7 +47,7 @@ from apps.personnel_actions.models import (
 )
 from apps.system.audit import Category, record
 
-from apps.personnel_actions import lifecycle  # noqa: E402  (Fase 21)
+from apps.personnel_actions import dynamic_fields, lifecycle, roster_sync  # noqa: E402  (Fases 21 y 22)
 
 ROLE_LABELS = {Role.ADMIN: "Administrador", Role.HR: "Generalista de RRHH", Role.WFM: "WFM", Role.EMPLOYEE: "Empleado"}
 
@@ -194,6 +198,8 @@ def _coerce(attr: ActionAttribute, raw: Any, *, employee: Employee, effective_da
                 return option["value"]
         check.error(where, f"«{attr.label}»: «{text}» no es una opción válida ({', '.join(o['label'] for o in attr.option_list())}).", "invalid_choice")
         return None
+    if t in (DataType.TIME, DataType.ACTIVITY, DataType.ROSTER):
+        return dynamic_fields.coerce(attr, raw, employee=employee, where=where, check=check)
     if t == DataType.SCHEDULE:
         definition, errors = sch.evaluate_schedule(raw, country_id=employee.country_id, on=effective_date or timezone.localdate())
         for e in errors:
@@ -220,6 +226,8 @@ def display_value(attr: ActionAttribute, value) -> str:
         return fmt(value)
     if attr.data_type == DataType.CHOICE:
         return next((o["label"] for o in attr.option_list() if o["value"] == value), str(value))
+    if attr.data_type in (DataType.TIME, DataType.ACTIVITY, DataType.ROSTER):
+        return dynamic_fields.display(attr, value)
     if attr.data_type in (DataType.INTEGER, DataType.DECIMAL):
         return format(Decimal(value).normalize(), ",f") if attr.data_type == DataType.DECIMAL else str(int(value))
     if attr.data_type == DataType.SCHEDULE:
@@ -244,6 +252,15 @@ def validate(action_type: ActionType | None, employee: Employee | None, data: di
                     + (f" (la elaboran: {roles})." if roles else "."), "forbidden")
     if employee is None:
         check.error("employee_code", "Indique el empleado (ID corporativo).", "required")
+    elif user is not None and not for_initial:
+        # Fase 23: solo a colaboradores de su jerarquía directa o indirecta (o toda la organización según su rol).
+        from apps.personnel_actions.scope import scope_for
+
+        sc = scope_for(user)
+        if not sc.allows(employee):
+            check.error("employee_code", (
+                "No puede elaborar AP a este colaborador: no está bajo su jerarquía directa ni indirecta."
+                if employee.pk != sc.self_id else "No puede elaborarse una AP a sí mismo."), "out_of_scope")
     if not check.ok:
         return check
 
@@ -318,6 +335,9 @@ def validate(action_type: ActionType | None, employee: Employee | None, data: di
                 if pending:
                     check.warn(None, f"El empleado tiene otra AP de horario en aprobación ({pending.folio}, efectiva {fmt(pending.effective_date)}).", "pending_schedule")
     elif action_type.effect == Effect.SALARY:
+        if check.ok and eff and roster_sync.roster_changes(values):
+            roster_sync.validate(check, action_type, employee, eff,
+                                 {k: v for k, v in values.items() if k != roster_sync.SALARY_KEY})
         amount = values.get("new_base_salary", (None, None))[1]
         if "new_base_salary" not in values:
             check.error(None, f"El tipo «{action_type.name}» ajusta el salario pero no tiene el campo «new_base_salary». Corríjalo en /admin/.", "config")
@@ -344,7 +364,37 @@ def validate(action_type: ActionType | None, employee: Employee | None, data: di
     elif action_type.effect in (Effect.SUSPENSION, Effect.TERMINATION, Effect.REHIRE):
         lifecycle.validate_effect(check, action_type, employee, eff, values, data, instance=instance,
                                   enforce_ack=user is not None and not for_initial)
+    elif action_type.effect == Effect.ROSTER and check.ok:
+        roster_sync.validate(check, action_type, employee, eff, values)
+    elif action_type.effect in (Effect.JUSTIFY, Effect.LEAVE) and check.ok and eff:
+        _validate_time(check, action_type, employee, eff, values)
     return check
+
+
+def _validate_time(check: Check, action_type: ActionType, employee: Employee, eff: date, values: dict) -> None:
+    """Fase 22: justificación / permiso — ventana coherente y días laborables que cubrirá."""
+    from apps.adherence import ap_effects
+
+    req, info = ap_effects.preview(employee, action_type.effect, values, eff)
+    for field_name, message in req.errors:
+        check.error(field_name, message)
+    if req.errors:
+        return
+    if info["closed"]:
+        check.error("effective_date", "El corte de asistencia de " + ", ".join(fmt(d) for d in info["closed"])
+                    + " está cerrado: pida que se reabra o elabore la AP para fechas abiertas.", "cutoff_closed")
+    if info["outside"]:
+        check.error("values.desde", "La ventana no cabe en el turno de " + ", ".join(fmt(d) for d in info["outside"]) + ".",
+                    "outside_container")
+    if not info["workdays"] and not info["closed"] and not info["outside"]:
+        check.error("effective_date", "El empleado no tiene turno programado en esas fechas (días de descanso): no hay horas "
+                    "que justificar.", "no_workdays")
+    elif info["rest_days"]:
+        check.warn(None, f"{len(info['rest_days'])} día(s) del rango son de descanso: no se justifican.", "rest_days")
+    if check.ok and info["workdays"]:
+        what = req.activity.name if req.activity else "Justificación"
+        check.warn(None, f"{what} ({'con goce' if req.paid else 'sin goce'}): al aprobarse se justificarán "
+                   f"{len(info['workdays'])} día(s) laborable(s) en la grilla y la adherencia.", "time_preview")
 
 
 # ================================================================ sello y firmas
@@ -557,6 +607,17 @@ def apply_effect(action: PersonnelAction, *, user=None, request=None, today: dat
         amount = values["new_base_salary"].value_decimal
         Employee.objects.filter(pk=action.employee_id).update(base_salary=amount)
         summary = f"Salario base de {action.employee.employee_code} actualizado por la AP {action.folio}."
+        if roster_sync.roster_changes(values):  # Fase 22: el puesto u otros datos del roster de la misma AP
+            rest = {k: v for k, v in values.items() if k != roster_sync.SALARY_KEY}
+            summary += " " + (roster_sync.apply(action, rest, user=user, today=today) or "")
+    elif effect == Effect.ROSTER:
+        summary = roster_sync.apply(action, values, user=user, today=today)
+        if summary is None:
+            return False  # se aplica en su fecha efectiva (apply_due_actions)
+    elif effect in (Effect.JUSTIFY, Effect.LEAVE):
+        from apps.adherence import ap_effects
+
+        summary = ap_effects.apply(action, values, user=user)
     elif effect == Effect.PAYROLL:
         summary = f"AP {action.folio} aprobada: la toma la siguiente planilla que se calcule (Fase 20)."
     elif effect in (Effect.SUSPENSION, Effect.TERMINATION, Effect.REHIRE):
@@ -704,7 +765,8 @@ def type_dict(t: ActionType, user) -> dict:
         "schedule_mode_label": t.get_schedule_mode_display() if t.effect == Effect.SCHEDULE else None,
         "can_create": can_create_type(user, t) and t.is_active,
         "attributes": [{
-            "key": a.key, "label": a.label, "data_type": a.data_type, "required": a.required, "options": a.option_list(),
+            "key": a.key, "label": a.label, "data_type": a.data_type, "required": a.required,
+            "options": dynamic_fields.options_for(a), "input": dynamic_fields.input_kind(a),
             "help_text": a.help_text, "min_value": a.min_value, "max_value": a.max_value, "max_length": a.max_length,
         } for a in t.attributes.all() if a.is_active],
         "steps": [{"order": s.order, "label": s.label, "role": s.role, "role_label": s.get_role_display()} for s in t.steps.all()],

@@ -98,7 +98,9 @@ def amount_in_words(amount, currency: str = "USD") -> str:
     value = q2(amount)
     whole = int(value)
     cents = int((value - whole) * 100)
-    name = {"USD": "DÓLARES DE LOS ESTADOS UNIDOS DE AMÉRICA"}.get(currency, currency)
+    from apps.common.currency import words_name
+
+    name = words_name(currency)  # Fase 22: moneda del país (dólares, quetzales, pesos…)
     words = number_to_words(whole)
     if words.endswith("veintiuno"):
         words = words[:-9] + "veintiún"  # «veintiún dólares»

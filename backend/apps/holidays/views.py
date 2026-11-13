@@ -82,6 +82,25 @@ class HolidaysView(_View):
         return Response(services.holiday_dict(h, 0), status=status.HTTP_201_CREATED)
 
 
+class CopyYearView(_View):
+    """Fase 23 — POST /holidays/copy-year/ {country, from_year, to_year}."""
+
+    method_permissions = {"post": Perm.PAYROLL_MANAGE}
+
+    def post(self, request):
+        d = _data(request)
+        try:
+            src, dst = int(d.get("from_year")), int(d.get("to_year"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Indique los años de origen y destino.", "code": "invalid"}, status=status.HTTP_400_BAD_REQUEST)
+        rows = services.copy_year(d.get("country"), src, dst, user=request.user, request=request)
+        n = len(rows)
+        return Response({"created": rows, "feedback": (f"{n} feriado(s) copiados a {dst} (Semana Santa recalculada con la Pascua de {dst}). "
+                                                       "Revise los feriados de fecha móvil o por decreto." if n else
+                                                       f"No había feriados nuevos que copiar a {dst}.")},
+                        status=status.HTTP_201_CREATED if n else status.HTTP_200_OK)
+
+
 class HolidayDetailView(_View):
     method_permissions = {"patch": Perm.PAYROLL_MANAGE, "delete": Perm.PAYROLL_MANAGE}
 

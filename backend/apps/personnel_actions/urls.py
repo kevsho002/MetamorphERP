@@ -12,6 +12,7 @@ urlpatterns = [
     path(f"{P}/validate/", views.ValidateView.as_view(), name="pa-validate"),
     path(f"{P}/missing-initial/", views.MissingInitialView.as_view(), name="pa-missing-initial"),
     path(f"{P}/schedule-preview/", views.SchedulePreviewView.as_view(), name="pa-schedule-preview"),
+    path(f"{P}/employees/picker/", views.EmployeePickerView.as_view(), name="pa-employee-picker"),
     re_path(rf"^{P}/employees/{EMPLOYEE}/$", views.EmployeeActionsView.as_view(), name="pa-employee"),
     re_path(rf"^{P}/employees/{EMPLOYEE}/lifecycle/$", views.LifecycleView.as_view(), name="pa-employee-lifecycle"),
     path(f"{P}/role-matrix/", views.RoleMatrixView.as_view(), name="pa-role-matrix"),

@@ -102,7 +102,7 @@
 }
 /* Fase 10 — fechas de ocurrencia interactivas, bloques por día, ciclos por año */
 .occurrence-link {
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 2px;

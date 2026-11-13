@@ -57,7 +57,6 @@ INSTALLED_APPS = [
     # Módulos del ERP
     "apps.common",
     "apps.hcm",
-    "apps.wfm",
     "apps.payroll",
     "apps.holidays",  # Fase 21: calendario de feriados y Holiday Segments
     "apps.accounts",
@@ -93,13 +92,14 @@ ASGI_APPLICATION = "config.asgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],  # Fase 23: admin/base_site.html con la paleta y los logos del ERP
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.system.theme.admin_theme",
             ],
         },
     },

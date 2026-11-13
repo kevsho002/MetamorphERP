@@ -5,7 +5,6 @@
    - Crea los esquemas de dominio si no existen:
        core -> catálogos transversales y secuencias
        hcm  -> capital humano (empleados, expediente digital)
-       wfm  -> workforce management (asistencias, downtimes, ingesta)
        fin  -> planillas y retenciones legales
    - core.catCountry: replica EXACTA de la tabla ya existente en la BD de
      desarrollo (creada 2026-11-09). Solo se crea si no existe; nunca se altera.
@@ -18,7 +17,6 @@ GO
 
 IF SCHEMA_ID(N'core') IS NULL EXEC (N'CREATE SCHEMA core AUTHORIZATION dbo;');
 IF SCHEMA_ID(N'hcm')  IS NULL EXEC (N'CREATE SCHEMA hcm  AUTHORIZATION dbo;');
-IF SCHEMA_ID(N'wfm')  IS NULL EXEC (N'CREATE SCHEMA wfm  AUTHORIZATION dbo;');
 IF SCHEMA_ID(N'fin')  IS NULL EXEC (N'CREATE SCHEMA fin  AUTHORIZATION dbo;');
 GO
 

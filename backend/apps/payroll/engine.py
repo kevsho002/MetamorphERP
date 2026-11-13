@@ -40,6 +40,24 @@ def hours(seconds) -> Decimal:
     return Decimal(seconds or 0) / HOUR
 
 
+# Fase 22 — «Contract Type» del Optimum ES Payroll Hours (columnas AA–AC): qué retenciones aplican por contrato.
+#   PERMANENTE                     ISSS 3 % (tope) + AFP 7.25 % + Renta por tabla
+#   PERMANENTE JB                  sin ISSS; AFP 7.25 % + Renta por tabla
+#   SERVICIOS PROFESIONALES        sin ISSS ni AFP; Renta 10 % fija sobre lo gravado
+#   SERVICIOS PROF. INTERNACIONAL  sin ISSS ni AFP; Renta 20 % fija sobre lo gravado
+CONTRACT_RULES: dict[str, dict] = {
+    "PERMANENTE": {"social_security": True, "pension": True, "flat_tax": None},
+    "PERMANENTE JB": {"social_security": False, "pension": True, "flat_tax": None},
+    "SERVICIOS PROFESIONALES": {"social_security": False, "pension": False, "flat_tax": Decimal("0.10")},
+    "SERVICIOS PROF. INTERNACIONAL": {"social_security": False, "pension": False, "flat_tax": Decimal("0.20")},
+}
+DEFAULT_CONTRACT = "PERMANENTE"
+
+
+def contract_rule(contract_type: str | None) -> dict:
+    return CONTRACT_RULES.get((contract_type or DEFAULT_CONTRACT).upper(), CONTRACT_RULES[DEFAULT_CONTRACT])
+
+
 @dataclass(frozen=True)
 class Params:
     days_per_month: int = 30
@@ -112,6 +130,9 @@ class EmployeeInput:
     period_calendar_days: int
     employed_calendar_days: int  # contratado y NO suspendido dentro del periodo
     scheduled_seconds: int = 0  # programado (horario vigente) en los cortes, días contratados y no suspendidos
+    # Fase 22: programado del CORTE COMPLETO (aunque ingrese a mitad o se retire antes): base del rate por hora
+    cutoff_scheduled_seconds: int = 0
+    contract_type: str = DEFAULT_CONTRACT
     paid_seconds: int = 0  # pagable validado (incluye feriados laborados y vacaciones gozadas)
     worked_seconds: int = 0  # Web Timer y demás registros (bruto)
     night_seconds: int = 0  # pagable nocturno
@@ -190,12 +211,27 @@ def weeks_with(dates: list[date]) -> int:
 
 
 def legal_lines(gross: Decimal, ss_base: Decimal, tax_gross: Decimal, rules: list[LegalRule], fraction: Decimal,
-                warnings: list[str]) -> tuple[list[Line], Decimal, Decimal, Decimal]:
-    """Retenciones de ley y aportes patronales en su orden de cálculo. Devuelve (líneas, laboral, patronal, base Renta)."""
+                warnings: list[str], contract_type: str | None = None) -> tuple[list[Line], Decimal, Decimal, Decimal]:
+    """Retenciones de ley y aportes patronales en su orden de cálculo. Devuelve (líneas, laboral, patronal, base Renta).
+
+    Fase 22: el tipo de contrato (roster) decide qué retenciones aplican (CONTRACT_RULES, Optimum ES Payroll Hours)."""
     lines: list[Line] = []
     reducing = legal_employee = employer = ZERO
     taxable_base = tax_gross
+    contract = contract_rule(contract_type)
     for r in sorted(rules, key=lambda x: (x.order, x.code)):
+        if (r.category == "SOCIAL_SECURITY" and not contract["social_security"]) or (r.category == "PENSION" and not contract["pension"]):
+            continue
+        if r.category == "INCOME_TAX" and contract["flat_tax"] is not None and r.party == "EMPLOYEE":
+            base = q2(tax_gross)
+            taxable_base = base
+            amount = q2(base * contract["flat_tax"])
+            lines.append(Line(kind="LEGAL", code=r.code, label=r.name, amount=amount, base=base, rate=contract["flat_tax"], source="LAW",
+                              deduction_type_id=r.id, sort=500 + r.order,
+                              notes=f"Contrato {(contract_type or DEFAULT_CONTRACT).upper()}: retención fija del "
+                                    f"{(contract['flat_tax'] * 100).normalize():f} % sobre lo gravado."))
+            legal_employee += amount
+            continue
         if r.category == "INCOME_TAX":
             base = q2(max(ZERO, tax_gross - reducing))
             taxable_base = base
@@ -249,8 +285,12 @@ def calculate(inp: EmployeeInput, params: Params, rules: list[LegalRule], concep
     fraction = period_fraction(inp.frequency, params.days_per_month)
     salary = Decimal(inp.monthly_salary)
     employed = min(Decimal(1), Decimal(inp.employed_calendar_days) / Decimal(max(inp.period_calendar_days, 1)))
-    period_salary = q2(salary * fraction * employed)
-    scheduled_h = hours(inp.scheduled_seconds)
+    # Fase 22: con el programado del corte COMPLETO el rate no depende de la fecha de ingreso / retiro: el salario del
+    # periodo (50 % del mensual en quincenal) ÷ las horas que el puesto tiene programadas en todo el corte; el
+    # colaborador cobra rate × sus horas pagables (prorrateo exacto de los actuals). Sin ese dato: proporción de días.
+    full_cutoff = inp.cutoff_scheduled_seconds > 0
+    period_salary = q2(salary * fraction) if full_cutoff else q2(salary * fraction * employed)
+    scheduled_h = hours(inp.cutoff_scheduled_seconds if full_cutoff else inp.scheduled_seconds)
     if scheduled_h > 0:
         rate = period_salary / scheduled_h
     else:
@@ -275,8 +315,11 @@ def calculate(inp: EmployeeInput, params: Params, rules: list[LegalRule], concep
         lines.append(line)
         return line
 
-    notes = f"Rate = {period_salary} ÷ {q2(scheduled_h)} h programadas."
-    if employed < 1:
+    notes = f"Rate = {period_salary} ÷ {q2(scheduled_h)} h programadas" + (" del corte completo." if full_cutoff else ".")
+    if full_cutoff and inp.cutoff_scheduled_seconds > inp.scheduled_seconds:
+        notes += (f" Prorrateo: programado {q2(hours(inp.scheduled_seconds))} h de {q2(scheduled_h)} h del corte (ingreso, retiro o "
+                  "suspensión dentro del corte).")
+    elif not full_cutoff and employed < 1:
         notes += f" Proporcional: {inp.employed_calendar_days} de {inp.period_calendar_days} días contratado y no suspendido."
     add("EARNING", "SALARIO", rate * hours(regular_seconds), quantity=q4(hours(regular_seconds)), unit="horas",
         rate=q4(rate), notes=notes)
@@ -346,7 +389,8 @@ def calculate(inp: EmployeeInput, params: Params, rules: list[LegalRule], concep
     ss_base = q2(max(ZERO, sum((ln.amount for ln in earnings if concept(ln.code).affects_social_security), ZERO)))
     tax_gross = q2(max(ZERO, sum((ln.amount for ln in earnings if concept(ln.code).affects_income_tax), ZERO)))
 
-    legal, legal_employee, employer, taxable_base = legal_lines(gross, ss_base, tax_gross, rules, fraction, warnings)
+    legal, legal_employee, employer, taxable_base = legal_lines(gross, ss_base, tax_gross, rules, fraction, warnings,
+                                                                inp.contract_type)
     lines += legal
 
     # ---- descuentos autorizados por AP (después de retenciones; el líquido nunca queda negativo)
@@ -368,7 +412,14 @@ def calculate(inp: EmployeeInput, params: Params, rules: list[LegalRule], concep
     def info(code: str, label: str, qty, unit: str = "horas", notes: str = "", source: str = "") -> None:
         lines.append(Line(kind="INFO", code=code, label=label, quantity=q4(qty), unit=unit, notes=notes, source=source, sort=900))
 
-    info("HORAS_PROGRAMADAS", "Horas programadas (horario vigente)", scheduled_h, notes="Base del rate por hora.", source="SALARY")
+    if full_cutoff:
+        info("HORAS_PROGRAMADAS_CORTE", "Horas programadas del corte completo", scheduled_h, notes="Base del rate por hora.",
+             source="SALARY")
+    info("HORAS_PROGRAMADAS", "Horas programadas (horario vigente)", hours(inp.scheduled_seconds),
+         notes="Días contratados y no suspendidos dentro de los cortes." if full_cutoff else "Base del rate por hora.", source="SALARY")
+    if (inp.contract_type or DEFAULT_CONTRACT).upper() != DEFAULT_CONTRACT:
+        info("TIPO_CONTRATO", f"Tipo de contrato: {inp.contract_type.upper()}", Decimal(0), "", source="SALARY",
+             notes="Define las retenciones de ley aplicadas.")
     info("HORAS_PAGADAS", "Horas pagables validadas", hours(paid_seconds),
          notes="Web Timer / adherencia guardada y AP; incluye feriados laborados y vacaciones.", source="WEB_TIMER")
     if inp.worked_seconds:

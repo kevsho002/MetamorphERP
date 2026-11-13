@@ -9,9 +9,19 @@ Tablas administradas por migraciones de Django (esquema dbo, prefijo sys_).
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.utils import timezone
+
+
+BRAND_PALETTES = [
+    ("NAVY", "Azul corporativo"), ("TEAL", "Verde azulado"), ("WINE", "Vino"), ("GRAPHITE", "Grafito"),
+    ("FOREST", "Bosque"), ("CUSTOM", "Personalizada"),
+]
+
+
+def default_full_scope_roles():
+    return ["HR", "WFM"]
 
 
 class PlatformSettings(models.Model):
@@ -68,6 +78,24 @@ class PlatformSettings(models.Model):
         default=5,
         validators=[MinValueValidator(1), MaxValueValidator(20)],
         help_text="Fotografías y documentos PNG/JPG/JPEG (1 a 20 MB).",
+    )
+
+    # ------------------------------------------------- Fase 22: apariencia corporativa
+    brand_palette = models.CharField(
+        "paleta corporativa", max_length=12, choices=BRAND_PALETTES, default="NAVY",
+        help_text="Colores de la barra superior, botones y enlaces para todos los usuarios.",
+    )
+    brand_accent = models.CharField(
+        "color de acento personalizado", max_length=7, blank=True,
+        validators=[RegexValidator(r"^#[0-9a-fA-F]{6}$", "Color hexadecimal (#RRGGBB).")],
+        help_text="Solo con la paleta «Personalizada».",
+    )
+
+    # ------------------------------------------------- Fase 23: alcance jerárquico de las AP
+    ap_full_scope_roles = models.JSONField(
+        "roles con alcance global en AP", default=default_full_scope_roles, blank=True,
+        help_text='Áreas de soporte SIN equipo a cargo que elaboran AP a toda la organización (p. ej. ["HR", "WFM"]). '
+                  "Quien lidera en la cadena de mando solo ve su jerarquía; el Administrador ve a todos. Vacío = estricto.",
     )
 
     updated_at = models.DateTimeField("actualizado", auto_now=True)
@@ -177,3 +205,65 @@ class AuditEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.occurred_at:%d/%m/%Y %H:%M} · {self.action} · {self.actor_username or '—'}"
+
+
+class NotificationRead(models.Model):
+    """Fase 22 — Notificaciones operativas leídas por cada usuario. Las notificaciones se calculan en vivo (AP pendientes
+    de su firma, solicitudes de planilla y de WFM, altas en su jerarquía y no-shows del día); aquí solo se recuerda cuáles
+    ya vio, con la clave estable de cada una."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="read_notifications",
+                             verbose_name="usuario")
+    key = models.CharField("notificación", max_length=120)
+    read_at = models.DateTimeField("leída", default=timezone.now)
+
+    class Meta:
+        db_table = "sys_notification_read"
+        verbose_name = "notificación leída"
+        verbose_name_plural = "notificaciones leídas"
+        constraints = [models.UniqueConstraint(fields=["user", "key"], name="uq_sys_notification_read")]
+        indexes = [models.Index(fields=["user", "read_at"], name="ix_sys_notification_user")]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} · {self.key}"
+
+
+class UserPreference(models.Model):
+    """Fase 23 — Preferencias visuales PERSONALES (perfil): se aplican sobre la configuración global por defecto.
+    Paleta vacía = usa la paleta corporativa global (respaldo de fábrica)."""
+
+    class Theme(models.TextChoices):
+        SYSTEM = "system", "Según el sistema"
+        LIGHT = "light", "Día (claro)"
+        DARK = "dark", "Noche (oscuro)"
+
+    class Density(models.TextChoices):
+        COMFORTABLE = "comfortable", "Cómoda"
+        COMPACT = "compact", "Compacta"
+
+    class TimeMode(models.TextChoices):
+        HMS = "hms", "HH:MM:SS"
+        DECIMAL = "decimal", "Horas decimales"
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="ui_preference",
+                                verbose_name="usuario")
+    theme = models.CharField("modo", max_length=6, choices=Theme, default=Theme.SYSTEM)
+    density = models.CharField("densidad", max_length=11, choices=Density, default=Density.COMFORTABLE)
+    time_mode = models.CharField("formato de tiempos", max_length=7, choices=TimeMode, default=TimeMode.HMS)
+    palette = models.CharField("paleta personal", max_length=12, choices=BRAND_PALETTES, blank=True,
+                               help_text="Vacío = la paleta corporativa global.")
+    accent = models.CharField("acento personal", max_length=7, blank=True,
+                              validators=[RegexValidator(r"^#[0-9a-fA-F]{6}$", "Color hexadecimal (#RRGGBB).")])
+    updated_at = models.DateTimeField("actualizado", auto_now=True)
+
+    class Meta:
+        db_table = "sys_user_preference"
+        verbose_name = "preferencia visual del usuario"
+        verbose_name_plural = "preferencias visuales de los usuarios"
+        constraints = [
+            models.CheckConstraint(condition=models.Q(theme__in=["system", "light", "dark"]), name="ck_sys_pref_theme"),
+            models.CheckConstraint(condition=~models.Q(palette="CUSTOM") | ~models.Q(accent=""), name="ck_sys_pref_custom_accent"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} · {self.palette or 'global'} · {self.theme}"

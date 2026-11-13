@@ -1,4 +1,6 @@
-import { formatDate } from "../../hcm/lib/format.js";
+import { currencySymbol } from "../../../app/currency.js";
+import { DocLogo } from "../../../components/ui/Brand.jsx";
+import { formatDate, formatMoney } from "../../hcm/lib/format.js";
 import { formatHours, useTimeFormat } from "../../../app/timeFormat.js";
 import { LINE_GROUPS, num, pct } from "../api.js";
 
@@ -20,7 +22,7 @@ function rate(line) {
  * colaborador, periodo, líneas por grupo (devengado con los descuentos de tiempo, retenciones de ley, descuentos
  * autorizados, aportes patronales e insumos de tiempo) y totales. Incluye el espacio de firma del colaborador.
  */
-export default function PayslipDocument({ content, hash, preview = false, preliminary = false }) {
+export default function PayslipDocument({ content, hash, preview = false, preliminary = false, pdfHref = null }) {
   useTimeFormat();
   if (!content) return null;
   const { employee, period, totals, currency } = content;
@@ -29,7 +31,7 @@ export default function PayslipDocument({ content, hash, preview = false, prelim
     <article className={`payslip${preliminary ? " payslip--preliminary" : ""}`} aria-label={`Boleta ${content.folio ?? ""}`}>
       <header className="payslip__head">
         <div>
-          <p className="payslip__brand">Metamorph ERP</p>
+          <DocLogo className="payslip__logo" />
           <h2 className="payslip__title">
             Boleta de pago{preliminary ? " PRELIMINAR" : preview ? " (vista previa)" : ""}
           </h2>
@@ -51,6 +53,13 @@ export default function PayslipDocument({ content, hash, preview = false, prelim
             <dt>Planilla</dt>
             <dd>{content.payroll_code}</dd>
           </div>
+          {pdfHref && (
+            <div className="payslip__pdf">
+              <a className="button button--sm" href={pdfHref} download>
+                Descargar PDF
+              </a>
+            </div>
+          )}
         </dl>
       </header>
 
@@ -71,7 +80,7 @@ export default function PayslipDocument({ content, hash, preview = false, prelim
         </div>
         <div>
           <dt>Salario base mensual</dt>
-          <dd>{num(content.base_salary)}</dd>
+          <dd>{formatMoney(content.base_salary, currency)}</dd>
         </div>
         <div>
           <dt>Días pagados (equivalentes)</dt>
@@ -103,7 +112,7 @@ export default function PayslipDocument({ content, hash, preview = false, prelim
                 <th scope="col">Valor / tasa</th>
                 <th scope="col">Origen</th>
                 <th scope="col" className="num">
-                  {g.kinds[0] === "INFO" ? "" : `Monto (${currency})`}
+                  {g.kinds[0] === "INFO" ? "" : `Monto (${currencySymbol(currency)})`}
                 </th>
               </tr>
             </thead>
@@ -128,17 +137,15 @@ export default function PayslipDocument({ content, hash, preview = false, prelim
       <dl className="payslip__totals">
         <div>
           <dt>Total devengado</dt>
-          <dd>{num(totals.gross)}</dd>
+          <dd>{formatMoney(totals.gross, currency)}</dd>
         </div>
         <div>
           <dt>Total descuentos</dt>
-          <dd>{num(totals.deductions)}</dd>
+          <dd>{formatMoney(totals.deductions, currency)}</dd>
         </div>
         <div className="payslip__net">
           <dt>Líquido a recibir</dt>
-          <dd>
-            {num(totals.net)} {currency}
-          </dd>
+          <dd>{formatMoney(totals.net, currency)}</dd>
         </div>
       </dl>
 

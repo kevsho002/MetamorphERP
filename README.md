@@ -24,6 +24,8 @@ En producción Django sirve también el build de React (un solo despliegue, mism
 | 19 | Reglas de asistencia y respaldo legal en WFM: Lateness automático bloqueado (solo se reemplaza con AP), Unjustified Absence con Legal Benefit Lunch, categorías del Time Utilization con desplegable en la barra, segmentos que exigen AP, ventana flotante del día (edición / lectura) y cola de aprobación de WFM |
 | 20 | Planilla automática y boletas físicas: parámetros salariales de El Salvador con vigencia (ISSS, AFP, Renta, INSAFORP, horas extra, nocturnidad, vacaciones), cálculo por periodo de pago con el Web Timer, las AP de pago, los segmentos de WFM y la adherencia; cierre con generación masiva de boletas (sello SHA-256) e inventario de RRHH por lote: impresas, firmadas y archivadas |
 | 21 | Refinamiento operativo y nómina avanzada: menú con flechas ▲/▼, tiempos en HH:MM:SS u horas decimales, suspensiones (antigüedad congelada), terminación con indicador de recontratación, reingreso con alerta formal, roles por tipo de AP; motor de planilla 100 % por horas (estándar BPO) con pre-cierre, boletas preliminares y excepciones; séptimo opcional por cuenta; calendario de feriados con Holiday Segments; liquidaciones e indemnizaciones con lotes de pago y cheques |
+| 22 | Optimización final: Apariencia (día / noche, paleta, tiempos), chevrons, retiro del mock de asistencias, centro de notificaciones, justificaciones y permisos con / sin goce como AP, roster automático por AP, planilla por cortes con prorrateo, tipos de contrato del Excel de referencia, boletas en PDF, moneda por país, estadísticas de datos y ERD interactivo |
+| 23 | Seguridad jerárquica y marca: selector de colaboradores por jerarquía (SQL `fn_EmployeesUnderLeader`) en las AP, paleta dual (global y personal en el perfil), Django Admin con la misma paleta y logos, calendario de feriados interactivo (mes / año, copia de año con Semana Santa) y los tres logos corporativos en barra, documentos / PDF y favicons |
 
 ```
 MetamorphERP/
@@ -33,20 +35,19 @@ MetamorphERP/
 │       ├── 001_schemas_and_core_catalogs.sql
 │       ├── 010_core_employee_code.sql       # ID corporativo por país (SP + Luhn)
 │       ├── 020_hcm_employees_and_digital_files.sql
-│       ├── 030_wfm_attendance_ingestion.sql
 │       ├── 040_fin_payroll_deductions.sql
 │       ├── 050_core_cost_center.sql         # Fase 2: centros de costos
 │       ├── 060_hcm_employee_cost_center.sql # Fase 3: Employee.CostCenterId con FK compuesta (mismo país)
 │       ├── 090_seed_reference_data.sql
 │       ├── 095_hcm_digital_file_media.sql   # Fase 5: documentos sensibles, PROFILE_PHOTO, solo PNG/JPEG
-│       └── 096_hcm_employee_lifecycle.sql   # Fase 7: estados Activo / Inactivo / Terminado
+│       ├── 096_hcm_employee_lifecycle.sql   # Fase 7: estados Activo / Inactivo / Terminado
+│       └── 097_drop_wfm_attendance_mock.sql # Fase 22: retira el mock de asistencias (esquema wfm)
 ├── backend/
 │   ├── manage.py
 │   ├── config/                     # settings (.env), urls, wsgi/asgi
 │   ├── apps/
 │   │   ├── common/                 # core: países, secuencia, centros de costos; helpers de campos
 │   │   ├── hcm/                    # Empleados, Expediente digital; services/employee_code.py
-│   │   ├── wfm/                    # Asistencias, downtimes, ingesta paramétrica
 │   │   ├── payroll/                # fin: planillas y retenciones
 │   │   ├── accounts/               # Fase 2: CustomUser, roles/RBAC, API de usuarios y sesión
 │   │   │   ├── models.py           #   CustomUser(AbstractUser)
@@ -119,7 +120,7 @@ MetamorphERP/
 
 | Tablas | Origen | En Django |
 |--------|--------|-----------|
-| `core.*`, `hcm.*`, `wfm.*`, `fin.*` (20) | `database/scripts` (SQL-first) | modelos `managed = False` |
+| `core.*`, `hcm.*`, `fin.*` | `database/scripts` (SQL-first) | modelos `managed = False` |
 | `dbo.accounts_customuser`, `auth_*`, `django_session`, `django_admin_log`, `django_content_type` | migraciones de Django | modelos administrados |
 | `dbo.hcm_attribute_definition`, `hcm_employee_template`, `hcm_employee_attribute_value`, `hcm_import_batch`, `hcm_import_batch_row` | migraciones de Django (Fase 3) | modelos administrados |
 | `dbo.sys_platform_settings`, `sys_user_session`, `sys_audit_event` | migraciones de Django (Fase 5) | modelos administrados |
@@ -129,6 +130,8 @@ MetamorphERP/
 | `dbo.acd_division`, `acd_primary_status`, `acd_aux_code`, `acd_agent_group`, `acd_group_aux`, `acd_agent_member`, `acd_agent_session`, `acd_status_segment`; vistas `vw_AcdStatusSegment`, `vw_AcdAgentSession` | migraciones de Django (Fase 11) | modelos administrados |
 | `dbo.pa_action_type`, `pa_action_attribute`, `pa_approval_step`, `pa_action`, `pa_action_value`, `pa_action_signature`, `pa_folio_sequence`; vista `vw_PersonnelAction` | migraciones de Django (Fase 9) | modelos administrados |
 | `dbo.pay_setting`, `pay_concept`, `pay_payroll_run`, `pay_payroll_line`, `pay_payslip_batch`, `pay_payslip`; vistas `vw_PayPayrollDetail`, `vw_PayPayslipInventory`; triggers sobre `fin.Payroll` / `fin.PayrollDetail` / `fin.PayrollDeduction` | migraciones de Django (Fase 20) | modelos administrados |
+| `dbo.sys_user_preference`; función `fn_EmployeesUnderLeader`, `fn_EasterSunday`; procedimiento `usp_HolidayCopyYear`; vista `vw_HolidayCalendar` | migraciones de Django (Fase 23) | modelos administrados |
+| `dbo.sys_notification_read`; procedimientos `usp_SystemTableStats`, `usp_SystemTableColumns`; vista `vw_SystemForeignKeys` | migraciones de Django (Fase 22) | modelos administrados |
 | `dbo.pa_employment_event`, `hol_holiday`, `hol_holiday_segment`, `pay_account_rule`, `pay_payroll_iteration`, `pay_payroll_exception`, `pay_settlement`, `pay_settlement_line`, `pay_settlement_batch`; vistas `vw_EmployeeTenure`, `vw_HolidaySegment`, `vw_PaySettlement` | migraciones de Django (Fase 21) | modelos administrados |
 
 `accounts.0002` y `employees.0002` crean FKs reales hacia tablas SQL-first (`hcm.Employee`, `core.catCountry`,
@@ -138,7 +141,7 @@ MetamorphERP/
 |----------|-------|
 | Empleados | `hcm.Employee` (`EmployeeCode` lo genera `core.usp_GenerateEmployeeCode`) |
 | ExpedientesDigitales | `hcm.DigitalFile` (+ `DigitalFileDocument`, `catDocumentType`) |
-| Asistencias | `wfm.Attendance` (+ `AttendanceDowntime`, ingesta paramétrica) |
+| Asistencias | `dbo.adh_schedule_segment` (grilla IEX), `adh_adherence_day`, `sch_time_record` (Web Timer) — Fase 22 |
 | Planillas | `fin.Payroll` (+ `PayrollDetail`, `PayrollDeduction`, `catDeductionType`, `DeductionBracket`) |
 | Usuarios | `dbo.accounts_customuser` (rol, ID corporativo, centro de costos) |
 | Centros de costos | `core.catCostCenter` (semilla `{PAÍS}-ADM/RRHH/OPS/TI`, valores de referencia) |
@@ -1132,6 +1135,78 @@ antes WFM › Jerarquía operativa).
     transferencia): cerrar → imprimir cheques / comprobantes con el **monto en letras** → pagado (SQL 50096).
   * Parámetros (salario mínimo, días y topes) en Parámetros salariales; **valores de referencia** a validar.
 
+## UI minimalista, APs unificadas, roster automático y planilla por cortes (Fase 22)
+
+* **Sistema › Apariencia y configuraciones visuales** (`/system/appearance`, para todos): el formato de tiempos
+  (HH:MM:SS u horas decimales) sale de la barra superior y vive aquí junto al **modo día / noche** (o según el sistema),
+  la **densidad** de la interfaz y la **paleta corporativa** (Azul, Verde azulado, Vino, Grafito, Bosque o personalizada),
+  que el Administrador fija para todos (`sys_platform_settings.brand_palette`, entregada en `/system/client-config/`).
+* **Menú lateral**: chevron minimalista (media rombo sin relleno, SVG) que gira al expandir.
+* **Retiro del mock «Asistencias y downtimes»**: se eliminaron la página, la app `apps.wfm`, el script 030 y las semillas;
+  las tablas `wfm.*` y el esquema se borran con `system.0009` / `database/scripts/097_drop_wfm_attendance_mock.sql`.
+  La asistencia vive en la grilla IEX, la adherencia y la asistencia automática.
+* **Centro de notificaciones** (campana de la barra superior y **Mi portal › Notificaciones**, sondeo de 30 s;
+  `GET/POST /system/notifications/`, lecturas en `sys_notification_read`): AP pendientes de **su** firma, planillas y
+  liquidaciones por aprobar, excepciones de planilla y solicitudes de WFM pendientes, **altas** de empleados de los
+  últimos 7 días bajo su jerarquía (o todas con `hcm.manage`) y **ausentismo (no-shows)** del día de su equipo.
+* **Justificaciones y permisos en el módulo regular de AP** (registro en **Acciones de personal › Justificaciones y
+  permisos**; `/wfm/justifications` redirige allí). Nuevos tipos de campo `TIME`, `ACTIVITY` (sub-segmento del Time
+  Utilization, filtrable por prefijo) y `ROSTER`; nuevos efectos:
+  * `JUSTIFY` — **Justificación de tiempo** (desde / hasta, actividad opcional, pagado): al aprobarse registra la ventana
+    en la adherencia (`adh_exception`) y, con actividad, coloca el segmento en la grilla (reemplaza lo que hubiera,
+    incluso Lateness / ausencia).
+  * `LEAVE` — **Permiso con goce** (`AP_PERMISO_CON_GOCE`, Paid Time Off) y **sin goce** (`AP_PERMISO_SIN_GOCE`,
+    Unpaid Time Off): **día laborable completo** (todo el turno de cada día del rango, hasta 31 días) o **por horas**.
+    Con goce se paga como programado (también sin adherencia guardada); sin goce no se paga pero no cuenta como
+    Unjustified Absence ni Lateness.
+* **Roster automático por AP** (efecto `ROSTER` y el ajuste salarial): `AP_PROMOCION` (puesto, salario, Team Manager,
+  línea) y `AP_CAMBIO_ORGANIZACIONAL` (cliente, marca, línea, sub-línea, Team Manager, puesto, tipo de contrato y centro
+  de costos) actualizan el **roster temporal** (historial bitemporal, motivo = folio) y el **expediente** (salario base,
+  centro de costos) en su fecha efectiva. Nuevos atributos del roster: Puesto y Tipo de contrato. Los valores se
+  validan contra el roster al elaborar la AP.
+* **Planilla alineada a los cortes internos**: el **rate por hora** = 50 % del mensual ÷ horas programadas del **corte
+  completo** (el horario se proyecta a los días previos al ingreso o posteriores al retiro); el colaborador cobra rate ×
+  sus horas pagables (prorrateo exacto de los actuals, línea «Horas programadas del corte completo»).
+* **Validación con el Optimum ES Payroll Hours**: mismas fórmulas (rate, nocturnidad = rate ÷ 4, horas extra × 2,
+  feriado, ISSS 3 % con tope, AFP 7.25 %, Renta quincenal por tramos, redondeo a 2 decimales) y **tipos de contrato**:
+  PERMANENTE (ISSS + AFP + tabla), PERMANENTE JB (sin ISSS), SERVICIOS PROFESIONALES (Renta fija 10 %, sin ISSS / AFP)
+  y SERVICIOS PROF. INTERNACIONAL (Renta 20 %). El catálogo del Time Utilization Project coincide con las actividades.
+* **Boletas en PDF** (generador nativo, sin dependencias): `GET /payroll/payslips/{id}/pdf/`,
+  `/payroll/runs/{id}/employees/{code}/pdf/` (preliminar si aún no hay boleta) y `/payroll/me/payslips/{final|preliminary}/{id}/pdf/`.
+  Botones «Descargar PDF» en el desglose, el inventario y el portal.
+* **Moneda por país**: símbolos dinámicos ($, Q, MX$, COL$) en planillas, boletas, liquidaciones y monto en letras
+  (dólares, quetzales, pesos).
+* **Sistema › Datos y modelo ER** (Administrador): filas, espacio de datos / índices, columnas, FK y triggers por tabla
+  (procedimiento `dbo.usp_SystemTableStats`) y el **ERD interactivo** (SVG: desplazar, acercar, mover tablas y resaltar
+  relaciones; `dbo.usp_SystemTableColumns`, vista `dbo.vw_SystemForeignKeys`).
+
+## Seguridad jerárquica, paleta dual, marca y calendario de feriados (Fase 23)
+
+* **Selector jerárquico en las AP**: el formulario ya no pide el ID a mano; un buscador (typeahead por nombre, ID o
+  documento; `GET /personnel-actions/employees/picker/?q=`) ofrece **únicamente** a los colaboradores bajo la jerarquía
+  **directa o indirecta** del usuario (función de SQL Server `dbo.fn_EmployeesUnderLeader`: CTE recursiva sobre
+  `ops_leader` + agentes de sus Team Managers en el roster vigente). El servidor rechaza cualquier otro (`out_of_scope`),
+  y nadie se elabora AP a sí mismo. El Administrador ve a toda la organización; las áreas de soporte **sin equipo a
+  cargo** (por defecto RRHH y WFM) también, configurable en `/admin/` › Parámetros (`ap_full_scope_roles`; vacío =
+  estrictamente jerárquico).
+* **Paleta dual** (Sistema › Apariencia): la **global por defecto** (Administrador; `sys_platform_settings.brand_palette`)
+  es el respaldo de fábrica; cada usuario puede elegir **su paleta personal** (y modo, densidad y formato de tiempos),
+  guardada en su **perfil** (`sys_user_preference`, `GET/PUT/DELETE /system/appearance/me/`) y aplicada en cualquier
+  equipo. «Restablecer la predeterminada» vuelve a la global.
+* **Django Admin con la identidad del ERP** (`backend/templates/admin/base_site.html` + `apps.system.theme.admin_theme`):
+  la misma paleta efectiva del usuario (personal o global) en barra, enlaces, botones y migas, también en modo oscuro;
+  el modo sigue la preferencia del perfil; logotipo de letras blancas y favicon de la mariposa.
+* **Calendario de feriados en React** (`/scheduling/holidays`): vistas **Mes** (clic en un día libre para agregar, en un
+  feriado para editar, desactivar o eliminar) y **Año** (12 meses), más la lista con Holiday Segments; **copiar al año
+  siguiente** (`POST /holidays/copy-year/`, procedimiento `dbo.usp_HolidayCopyYear`, que recalcula Jueves, Viernes y
+  Sábado Santo con `dbo.fn_EasterSunday`); vista `dbo.vw_HolidayCalendar`.
+* **Logos corporativos** (originales en `logos/`; `python manage.py brand_assets` genera las versiones optimizadas en
+  `frontend/public/brand/` y `apps/system/static/brand/`; el logotipo de la barra se limpia del «polvo» del recorte):
+  * `favicon_logo.png` → favicons del ERP y del admin, ícono de la app y marca reducida del menú lateral;
+  * `app_header_logo.png` (letras blancas) → barra superior del ERP y del Django Admin (y el acceso en modo noche);
+  * `doc_header_logo.png` (fondo blanco) → cabecera de las boletas (pantalla, impresión y **PDF**), los cheques de
+    liquidación y el acceso en modo día. Los documentos se ven siempre como papel blanco, también en modo noche.
+
 ## Fuera de alcance (por ahora)
 * JWT / SSO (la API usa sesión + CSRF; el SPA no maneja tokens).
 * Restablecimiento de contraseña por correo (no hay servicio de correo; el reseteo lo hace RRHH/Administración).
@@ -1139,16 +1214,19 @@ antes WFM › Jerarquía operativa).
   Las cuentas técnicas sin empleado se crean con `createsuperuser` o la API `/users/`.
 * Edición de plantillas desde React (se administran en `/admin/`) y procesamiento asíncrono de lotes
   (hoy síncrono, límite 5000 filas).
-* Documentos en PDF (la Fase 5 acepta solo imágenes PNG/JPG/JPEG) y antivirus en las cargas.
+* Documentos del expediente en PDF (la Fase 5 acepta solo imágenes PNG/JPG/JPEG; las boletas sí se descargan en PDF
+  desde la Fase 22) y antivirus en las cargas.
+* Notificaciones push / correo (el centro de notificaciones consulta cada 30 s) y la «Otras variables» con Renta del
+  10 % del Excel de referencia (las bonificaciones se configuran por concepto).
 * Pantalla React para administrar catálogos (clientes, marcas, líneas, bancos, herramientas y tipos de ID): hoy en
   `/admin/` (rol Administrador).
   No existe un rol «QA»: los reportes de roster los consultan Administrador, RRHH y WFM.
-* Reportes y Power BI y procesador de ingesta WFM (`wfm.*`, Fase 1). La planilla no calcula el aguinaldo anual de
+* Reportes y Power BI (el mock de ingesta `wfm.*` se retiró en la Fase 22). La planilla no calcula el aguinaldo anual de
   diciembre (solo el proporcional de las liquidaciones), el recálculo anual de Renta (junio / diciembre) ni envía
   planillas al ISSS / AFP / banco; los cheques se imprimen en papel en blanco (sin formato del banco).
 * Programación exacta del almuerzo y descansos (responsabilidad operativa de WFM).
-* AP masivas (un cambio de horario para muchos colaboradores a la vez) y jerarquía por jefe inmediato (hoy las firmas
-  se asignan por rol).
+* AP masivas (un cambio de horario para muchos colaboradores a la vez). Las firmas siguen asignándose por rol; la
+  jerarquía (Fase 23) limita a quién se le elabora la AP.
 * Terminar antes de tiempo una asignación adicional (hoy rige hasta su `vigente_hasta`; para extenderla se elabora
   otra AP adicional).
 * ACD: integración con una plataforma de telefonía real (colas, interacciones, ACW automático), estado Idle por

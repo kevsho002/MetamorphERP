@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { BrandMark } from "../ui/Brand.jsx";
 
 const PIN_KEY = "metamorph.sidebar.pinned";
 const GROUPS_KEY = "metamorph.sidebar.groups"; // Fase 21: grupos expandidos / contraídos por el usuario
@@ -50,7 +51,7 @@ function readGroups() {
   }
 }
 
-/** Grupos del menú expandidos (▲) o contraídos (▼). Sin preferencia, solo se expande el módulo activo. */
+/** Grupos del menú expandidos o contraídos (chevron minimalista, Fase 22). Sin preferencia, solo se expande el módulo activo. */
 function useGroupState() {
   const [state, setState] = useState(readGroups);
   const toggle = useCallback((id, current) => {
@@ -136,6 +137,7 @@ export default function Sidebar({ modules, hasPermission, pinned, onTogglePin, m
             </svg>
           </button>
           <span className="sidebar__head-label">{pinned ? "Menú fijo" : "Menú"}</span>
+          <BrandMark size={20} className="sidebar__mark" />
         </div>
         {modules.map((m) => {
           const items = m.menu.filter((item) => hasPermission(item.permission));
@@ -156,8 +158,10 @@ export default function Sidebar({ modules, hasPermission, pinned, onTogglePin, m
                 >
                   <ModuleIcon module={m} />
                   <span className="sidebar__title-text">{m.label}</span>
-                  <span className="sidebar__arrow" aria-hidden="true">
-                    {open ? "▲" : "▼"}
+                  <span className={`sidebar__arrow${open ? " is-open" : ""}`} aria-hidden="true">
+                    <svg className="sidebar__chevron" viewBox="0 0 12 12">
+                      <polyline points="2.5,4.5 6,8 9.5,4.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   </span>
                 </button>
               </h2>

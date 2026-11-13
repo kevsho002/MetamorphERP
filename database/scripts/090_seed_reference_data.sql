@@ -30,55 +30,6 @@ FROM (VALUES
      ) AS s (Code, Name, IsMandatory, RequiresExpiry, RetentionYears)
 WHERE NOT EXISTS (SELECT 1 FROM hcm.catDocumentType d WHERE d.Code = s.Code);
 
-/* ----------------------------- WFM: tipos de downtime ----------------------- */
-INSERT INTO wfm.catDowntimeType (Code, Name, IsPaid, CountsAsWorked, AffectsAdherence, MaxMinutesPerDay)
-SELECT s.Code, s.Name, s.IsPaid, s.CountsAsWorked, s.AffectsAdherence, s.MaxMinutesPerDay
-FROM (VALUES
-        (N'BREAK',        N'Descanso programado',               1, 1, 0, 30),
-        (N'LUNCH',        N'Almuerzo',                          0, 0, 0, 60),
-        (N'TRAINING',     N'Capacitación',                      1, 1, 0, NULL),
-        (N'COACHING',     N'Coaching / retroalimentación',      1, 1, 0, NULL),
-        (N'MEETING',      N'Reunión',                           1, 1, 0, NULL),
-        (N'SYSTEM_DOWN',  N'Caída de sistemas (no imputable)',  1, 1, 0, NULL),
-        (N'PERSONAL',     N'Tiempo personal no programado',     0, 0, 1, NULL)
-     ) AS s (Code, Name, IsPaid, CountsAsWorked, AffectsAdherence, MaxMinutesPerDay)
-WHERE NOT EXISTS (SELECT 1 FROM wfm.catDowntimeType t WHERE t.Code = s.Code);
-
-/* ----------------------------- WFM: orígenes de ingesta --------------------- */
-INSERT INTO wfm.catIngestionSource (Code, Name, SourceType, FileFormat, Config)
-SELECT s.Code, s.Name, s.SourceType, s.FileFormat, s.Config
-FROM (VALUES
-        (N'MANUAL',      N'Captura manual en Metamorph', N'MANUAL', NULL,  NULL),
-        (N'WFM_CSV_STD', N'WFM externo - CSV estándar',  N'WFM',    N'CSV',
-         N'{"delimiter":",","encoding":"utf-8","hasHeader":true,"skipRows":0}')
-     ) AS s (Code, Name, SourceType, FileFormat, Config)
-WHERE NOT EXISTS (SELECT 1 FROM wfm.catIngestionSource i WHERE i.Code = s.Code);
-
-DECLARE @WfmCsv INT = (SELECT SourceId FROM wfm.catIngestionSource WHERE Code = N'WFM_CSV_STD');
-
-INSERT INTO wfm.IngestionFieldMap (SourceId, SourceField, TargetField, DataType, FormatPattern, IsRequired, TransformRule)
-SELECT @WfmCsv, s.SourceField, s.TargetField, s.DataType, s.FormatPattern, s.IsRequired, s.TransformRule
-FROM (VALUES
-        (N'agent_id',     N'EmployeeCode',    N'STRING',   NULL,                  1, N'TRIM|UPPER'),
-        (N'date',         N'WorkDate',        N'DATE',     N'yyyy-MM-dd',         1, NULL),
-        (N'sched_start',  N'ScheduledStart',  N'DATETIME', N'yyyy-MM-dd HH:mm',   0, NULL),
-        (N'sched_end',    N'ScheduledEnd',    N'DATETIME', N'yyyy-MM-dd HH:mm',   0, NULL),
-        (N'login',        N'ActualStart',     N'DATETIME', N'yyyy-MM-dd HH:mm:ss',0, NULL),
-        (N'logout',       N'ActualEnd',       N'DATETIME', N'yyyy-MM-dd HH:mm:ss',0, NULL),
-        (N'aux_code',     N'DowntimeCode',    N'STRING',   NULL,                  0, N'TRIM|UPPER'),
-        (N'aux_start',    N'DowntimeStart',   N'DATETIME', N'yyyy-MM-dd HH:mm:ss',0, NULL),
-        (N'aux_end',      N'DowntimeEnd',     N'DATETIME', N'yyyy-MM-dd HH:mm:ss',0, NULL)
-     ) AS s (SourceField, TargetField, DataType, FormatPattern, IsRequired, TransformRule)
-WHERE NOT EXISTS (SELECT 1 FROM wfm.IngestionFieldMap m WHERE m.SourceId = @WfmCsv AND m.TargetField = s.TargetField);
-
-INSERT INTO wfm.DowntimeCodeMap (SourceId, ExternalCode, DowntimeTypeId)
-SELECT @WfmCsv, s.ExternalCode, t.DowntimeTypeId
-FROM (VALUES (N'AUX1', N'BREAK'), (N'AUX2', N'LUNCH'), (N'AUX3', N'TRAINING'),
-             (N'AUX4', N'COACHING'), (N'AUX5', N'MEETING'), (N'AUX6', N'SYSTEM_DOWN'),
-             (N'AUX9', N'PERSONAL')) AS s (ExternalCode, DowntimeCode)
-JOIN wfm.catDowntimeType t ON t.Code = s.DowntimeCode
-WHERE NOT EXISTS (SELECT 1 FROM wfm.DowntimeCodeMap m WHERE m.SourceId = @WfmCsv AND m.ExternalCode = s.ExternalCode);
-
 /* ----------------------------- FIN: retenciones El Salvador (referencia) ---- */
 DECLARE @SV INT = (SELECT CountryId FROM core.catCountry WHERE CountryCode = 'SV');
 

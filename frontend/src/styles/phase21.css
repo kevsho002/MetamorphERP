@@ -221,9 +221,6 @@
     white-space: nowrap;
   }
 
-  .time-format select {
-    max-width: 6.5rem;
-  }
 }
 
 .table.settle-lines td:first-child {

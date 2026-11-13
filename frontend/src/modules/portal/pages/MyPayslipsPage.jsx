@@ -46,7 +46,7 @@ export default function MyPayslipsPage() {
               <p className="muted small">
                 Planilla {b.run.code} · corrida {b.run.iterations} · actualizada {formatDateTime(b.run.calculated_at)}
               </p>
-              <PayslipDocument content={previewContent(b)} preliminary />
+              <PayslipDocument content={previewContent(b)} preliminary pdfHref={payrollApi.myPayslipPdfUrl("preliminary", b.run.id)} />
               <ExceptionForm payrollId={b.run.payroll_id} categories={data.categories} onDone={() => setReload((k) => k + 1)} />
               {b.exceptions.length > 0 && (
                 <ul className="portal-exceptions">
@@ -87,10 +87,13 @@ export default function MyPayslipsPage() {
                       </td>
                       <td>{formatDate(s.payment_date)}</td>
                       <td className="num">{formatMoney(s.net_pay, s.content?.currency)}</td>
-                      <td>
+                      <td className="pay-nowrap">
                         <button type="button" className="button button--ghost button--sm" onClick={() => setOpenFinal(openFinal === s.id ? null : s.id)}>
                           {openFinal === s.id ? "Ocultar" : "Ver"}
-                        </button>
+                        </button>{" "}
+                        <a className="button button--ghost button--sm" href={payrollApi.myPayslipPdfUrl("final", s.id)} download>
+                          PDF
+                        </a>
                       </td>
                     </tr>
                   ))}
@@ -100,7 +103,7 @@ export default function MyPayslipsPage() {
           )}
           {openFinal && (() => {
             const s = data.final.find((x) => x.id === openFinal);
-            return s ? <PayslipDocument content={s.content} hash={s.content_hash} /> : null;
+            return s ? <PayslipDocument content={s.content} hash={s.content_hash} pdfHref={payrollApi.myPayslipPdfUrl("final", s.id)} /> : null;
           })()}
         </>
       )}

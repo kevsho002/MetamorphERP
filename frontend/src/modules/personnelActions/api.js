@@ -14,6 +14,7 @@ export const actionsApi = {
   sign: (folio, decision, comment) => api.post(`/personnel-actions/${enc(folio)}/sign/`, { decision, comment }),
   cancel: (folio, reason) => api.post(`/personnel-actions/${enc(folio)}/cancel/`, { reason }),
   employee: (code, options) => api.get(`/personnel-actions/employees/${enc(code)}/`, options),
+  picker: (params, options) => api.get(`/personnel-actions/employees/picker/${toQuery(params)}`, options), // Fase 23
   missingInitial: (options) => api.get("/personnel-actions/missing-initial/", options),
   schedulePreview: (payload, options) => api.post("/personnel-actions/schedule-preview/", payload, options),
   // Fase 21: ciclo de vida (antigüedad, suspensiones, terminaciones, reingresos) y roles por tipo de AP

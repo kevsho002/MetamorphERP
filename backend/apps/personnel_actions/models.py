@@ -55,6 +55,10 @@ class Effect(models.TextChoices):
     SUSPENSION = "SUSPENSION", "Suspensión disciplinaria (inactivo por N días; congela la antigüedad)"
     TERMINATION = "TERMINATION", "Terminación / renuncia (estado Terminado; indicador de recontratación)"
     REHIRE = "REHIRE", "Reingreso (reactiva al colaborador; la antigüedad corre desde la nueva fecha)"
+    # Fase 22: justificaciones y permisos dentro del módulo regular de AP; roster automático
+    JUSTIFY = "JUSTIFY", "Justificación de tiempo (segmento en la grilla + justificación de adherencia)"
+    LEAVE = "LEAVE", "Permiso con / sin goce (justifica el día laborable completo o por horas)"
+    ROSTER = "ROSTER", "Actualiza el roster y el expediente (promoción, cambio organizacional)"
 
 
 class ScheduleMode(models.TextChoices):
@@ -127,6 +131,10 @@ class DataType(models.TextChoices):
     BOOLEAN = "BOOLEAN", "Sí / No"
     CHOICE = "CHOICE", "Lista de opciones"
     SCHEDULE = "SCHEDULE", "Horario semanal (por día)"
+    # Fase 22
+    TIME = "TIME", "Hora (HH:MM[:SS])"
+    ACTIVITY = "ACTIVITY", "Actividad de la grilla (segmento)"
+    ROSTER = "ROSTER", "Dato del roster / expediente (la clave es el código del atributo)"
 
 
 class ActionAttribute(models.Model):

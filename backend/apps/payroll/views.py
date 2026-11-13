@@ -32,7 +32,7 @@ from apps.accounts.permissions import HasActionPermission, PasswordChangeNotRequ
 from apps.accounts.roles import Perm
 from apps.common.models import CostCenter, Country
 from apps.hcm.models import Employee
-from apps.payroll import services
+from apps.payroll import pdf, services
 from apps.payroll.models import DeductionType, PayConcept, PayrollRun, PayrollSetting, Payslip, PayslipBatch
 from apps.scheduling.models import PayPeriod
 
@@ -178,6 +178,34 @@ class RunEmployeeView(_View):
 
     def get(self, request, pk, code):
         return Response(services.employee_breakdown(_run(pk), str(code).upper()), headers=NO_STORE)
+
+
+def pdf_response(content: dict, *, content_hash=None, preliminary=False, inline=False) -> HttpResponse:
+    """Fase 22: boleta de pago en PDF (descarga formal)."""
+    body = pdf.payslip_pdf(content, content_hash=content_hash, preliminary=preliminary)
+    response = HttpResponse(body, content_type="application/pdf")
+    disposition = "inline" if inline else "attachment"
+    response["Content-Disposition"] = f'{disposition}; filename="{pdf.filename(content, preliminary)}"'
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+class RunEmployeePdfView(_View):
+    """PDF de la boleta de un colaborador en una planilla: la congelada si existe, si no la preliminar."""
+
+    method_permissions = {"get": Perm.PAYROLL_VIEW}
+
+    def get(self, request, pk, code):
+        content, seal, preliminary = services.preview_payslip(_run(pk), str(code).upper())
+        return pdf_response(content, content_hash=seal, preliminary=preliminary, inline=request.query_params.get("inline") == "1")
+
+
+class PayslipPdfView(_View):
+    method_permissions = {"get": Perm.PAYROLL_VIEW}
+
+    def get(self, request, pk):
+        s = get_object_or_404(services.payslip_queryset(), pk=pk)
+        return pdf_response(s.content, content_hash=s.content_hash, inline=request.query_params.get("inline") == "1")
 
 
 class RunActionView(_View):
@@ -380,6 +408,26 @@ class MyPayslipsView(_View):
 
     def get(self, request):
         return Response(portal.my_payslips(request.user), headers=NO_STORE)
+
+
+class MyPayslipPdfView(_View):
+    """Portal: PDF de una boleta FINAL propia (`kind=final`, id de la boleta) o de la PRELIMINAR publicada de una
+    planilla en curso (`kind=preliminary`, id de la corrida)."""
+
+    method_permissions = {"get": Perm.SELF_SERVICE}
+
+    def get(self, request, kind, pk):
+        e = portal.my_employee(request.user)
+        if e is None:
+            return Response({"detail": "Su usuario no está vinculado a un colaborador."}, status=status.HTTP_404_NOT_FOUND)
+        if kind == "final":
+            s = get_object_or_404(Payslip, pk=pk, employee=e)
+            return pdf_response(s.content, content_hash=s.content_hash)
+        run = get_object_or_404(PayrollRun.objects.select_related("payroll", "pay_period", "pay_period__cycle"), pk=pk)
+        if run.preliminary_published_at is None or run.payroll.payroll_status != "CALCULATED":
+            return Response({"detail": "La boleta preliminar de esa planilla no está publicada."}, status=status.HTTP_404_NOT_FOUND)
+        content, _seal, _pre = services.preview_payslip(run, e.employee_code)
+        return pdf_response(content, preliminary=True)
 
 
 class ExceptionsView(_View):

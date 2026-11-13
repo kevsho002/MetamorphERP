@@ -197,6 +197,21 @@ class TransitionView(_View):
         return Response({"feedback": feedback, "action": services.action_dict(action, request.user, detail=True)})
 
 
+class EmployeePickerView(_View):
+    """Fase 23 — GET /personnel-actions/employees/picker/?q=&terminated=1 — colaboradores a los que el usuario puede
+    elaborarles una AP (su jerarquía directa e indirecta; ver apps/personnel_actions/scope.py)."""
+
+    method_permissions = {"get": Perm.ACTIONS_CREATE}
+
+    def get(self, request):
+        from apps.personnel_actions import scope
+
+        p = request.query_params
+        limit = int(p["limit"]) if str(p.get("limit") or "").isdigit() else 20
+        return Response(scope.search(request.user, p.get("q", ""), include_terminated=p.get("terminated") == "1", limit=limit),
+                        headers=NO_STORE)
+
+
 class EmployeeActionsView(_View):
     method_permissions = {"get": Perm.ACTIONS_VIEW}
 
@@ -225,7 +240,16 @@ class EmployeeActionsView(_View):
             "creatable_types": [{"code": t.code, "name": t.name, "effect": t.effect, "is_initial_schedule": t.is_initial_schedule,
                                  "schedule_mode": t.schedule_mode} for t in types],
             "can_create": "actions.create" in perms and employee.employment_status != Employee.Status.TERMINATED,
+            # Fase 22: valores vigentes del roster / expediente (los campos «Dato del roster» de la AP los muestran)
+            "roster": _roster_now(employee, today),
+            "cost_center": employee.cost_center.code if employee.cost_center_id else None,
         }, headers=NO_STORE)
+
+
+def _roster_now(employee: Employee, today) -> dict:
+    from apps.roster import services as roster
+
+    return {row["code"]: row["current"]["label"] for row in roster.snapshot(employee, today) if row["current"]}
 
 
 class MissingInitialView(_View):

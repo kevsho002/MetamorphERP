@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { todayIso } from "../../hcm/lib/format.js";
 import { actionsApi } from "../api.js";
+import EmployeePicker from "../components/EmployeePicker.jsx";
 import RehireAlert from "../components/RehireAlert.jsx";
 import WeeklyScheduleEditor, { defaultSchedule, scheduleFromSummary, scheduleInput } from "../components/WeeklyScheduleEditor.jsx";
 
@@ -32,24 +33,33 @@ function AttributeField({ attr, value, onChange, error, context }) {
     );
   }
   const message = Array.isArray(error) ? error.map((e) => e.message).join(" ") : null;
+  // Fase 22: valor vigente del roster / expediente (campos «Dato del roster»).
+  const current = attr.data_type === "ROSTER" ? (attr.key === "cost_center" ? context.costCenter : context.roster?.[attr.key]) : null;
   let input;
-  if (attr.data_type === "CHOICE") {
+  const asSelect = attr.data_type === "CHOICE" || attr.data_type === "ACTIVITY" || (attr.data_type === "ROSTER" && attr.input === "select");
+  if (asSelect) {
+    const options = attr.data_type === "ROSTER" && context.country ? attr.options.filter((o) => !o.country || o.country === context.country) : attr.options;
     input = (
       <select id={id} name={`values.${attr.key}`} value={value ?? ""} onChange={(e) => onChange(e.target.value)} required={attr.required}>
-        <option value="">— Seleccione —</option>
-        {attr.options.map((o) => (
+        <option value="">{attr.data_type === "ROSTER" && !attr.required ? "— Sin cambio —" : "— Seleccione —"}</option>
+        {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
+            {attr.data_type === "ACTIVITY" ? (o.paid ? " · pagado" : " · no pagado") : ""}
           </option>
         ))}
       </select>
     );
-  } else if (attr.data_type === "BOOLEAN") {
+  } else if (attr.data_type === "TIME") {
+    input = (
+      <input id={id} type="time" step="1" name={`values.${attr.key}`} value={value ?? ""} onChange={(e) => onChange(e.target.value)} required={attr.required} />
+    );
+  } else if (attr.data_type === "BOOLEAN" || attr.input === "boolean") {
     input = <input id={id} type="checkbox" name={`values.${attr.key}`} checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
   } else if (attr.data_type === "LONG_TEXT") {
     input = <textarea id={id} name={`values.${attr.key}`} rows={3} value={value ?? ""} maxLength={attr.max_length ?? 2000} onChange={(e) => onChange(e.target.value)} required={attr.required} />;
   } else {
-    const type = attr.data_type === "DATE" ? "date" : ["INTEGER", "DECIMAL"].includes(attr.data_type) ? "number" : "text";
+    const type = attr.data_type === "DATE" || attr.input === "date" ? "date" : ["INTEGER", "DECIMAL"].includes(attr.data_type) ? "number" : "text";
     input = (
       <input
         id={id}
@@ -69,9 +79,24 @@ function AttributeField({ attr, value, onChange, error, context }) {
     <label className="field" htmlFor={id}>
       {label}
       {input}
-      {message ? <small className="field__error">{message}</small> : attr.help_text && <small className="field__hint">{attr.help_text}</small>}
+      {message ? (
+        <small className="field__error">{message}</small>
+      ) : (
+        (attr.help_text || current) && (
+          <small className="field__hint">
+            {current && `Vigente: ${current}. `}
+            {attr.help_text}
+          </small>
+        )
+      )}
     </label>
   );
+}
+
+/** Fase 22: en los permisos «Día laborable completo» no se piden horas (se cubre todo el turno de cada día). */
+function visibleAttr(type, attr, values) {
+  if (type.effect === "LEAVE" && ["desde", "hasta"].includes(attr.key)) return values.alcance === "HORAS";
+  return true;
 }
 
 /**
@@ -223,22 +248,25 @@ export default function NewActionPage() {
               </small>
             )}
           </label>
-          <label className="field">
+          <div className="field">
             <span className="field__label">
-              ID corporativo del empleado<span className="field__req">*</span>
+              Colaborador<span className="field__req">*</span>
             </span>
-            <input value={form.employee_code} onChange={(e) => set({ employee_code: e.target.value.trim().toUpperCase(), values: {} })} required />
-            {employee?.error ? (
-              <small className="field__error">{employee.error}</small>
-            ) : (
-              employee && (
-                <small className="field__hint">
-                  {employee.full_name} · {employee.country}
-                  {!employee.initial_action && " · sin Primera AP de horario"}
-                </small>
-              )
+            {/* Fase 23: solo colaboradores bajo su jerarquía directa o indirecta (el servidor lo valida). */}
+            <EmployeePicker
+              value={form.employee_code}
+              selected={employee && !employee.error ? employee : null}
+              onChange={(code) => set({ employee_code: code, values: {} })}
+              includeTerminated={type?.effect === "REHIRE"}
+              error={employee?.error ?? (errorsFor.employee_code ?? []).map((e) => e.message).join(" ")}
+            />
+            {employee && !employee.error && (
+              <small className="field__hint">
+                {employee.country} · ingreso {employee.hire_date}
+                {!employee.initial_action && " · sin Primera AP de horario"}
+              </small>
             )}
-          </label>
+          </div>
           <label className="field">
             <span className="field__label">
               Fecha efectiva<span className="field__req">*</span>
@@ -261,14 +289,20 @@ export default function NewActionPage() {
         </label>
         {type && (
           <div className="form-grid">
-            {type.attributes.map((attr) => (
+            {type.attributes.filter((attr) => visibleAttr(type, attr, form.values)).map((attr) => (
               <AttributeField
                 key={attr.key}
                 attr={attr}
                 value={form.values[attr.key]}
                 onChange={(v) => setValue(attr.key, v)}
                 error={errorsFor[attr.key]}
-                context={{ employeeCode: employee && !employee.error ? form.employee_code : null, effectiveDate: form.effective_date }}
+                context={{
+                  employeeCode: employee && !employee.error ? form.employee_code : null,
+                  effectiveDate: form.effective_date,
+                  roster: employee?.roster,
+                  costCenter: employee?.cost_center,
+                  country: employee && !employee.error ? employee.country : null,
+                }}
               />
             ))}
           </div>

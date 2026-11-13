@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api, MAINTENANCE_EVENT } from "../services/apiClient.js";
+import { setBrand } from "./appearance.js";
 
 /**
  * Configuración del cliente web que el administrador controla en /admin/
@@ -29,6 +30,7 @@ export function ClientConfigProvider({ children }) {
     try {
       const data = await api.get("/system/client-config/");
       setConfig({ ...DEFAULTS, ...data });
+      setBrand(data.brand_palette, data.brand_accent); // Fase 22: paleta corporativa
     } catch {
       // Sin conexión: se conservan los últimos valores conocidos.
     }

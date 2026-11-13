@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { DocLogo } from "../../../components/ui/Brand.jsx";
 import { formatDate, formatMoney } from "../../hcm/lib/format.js";
 import { num, payrollApi } from "../api.js";
 
@@ -144,7 +145,7 @@ export default function SettlementBatchPage() {
           {b.settlements.map((s) => (
             <article key={s.id} className="settle-check">
               <header className="settle-check__head">
-                <strong>Metamorph ERP</strong>
+                <DocLogo className="settle-check__logo" />
                 <span>
                   {b.method === "CHECK" ? `Cheque N.º ${s.check_number || "—"}` : `Transferencia ${s.check_number || ""}`} · {formatDate(b.payment_date)}
                 </span>

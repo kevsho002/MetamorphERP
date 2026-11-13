@@ -268,7 +268,7 @@
 .payslip__brand {
   margin: 0;
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
   letter-spacing: 0.02em;
 }
 
@@ -385,7 +385,7 @@
 
 .payslip__net dd {
   font-size: 1.15rem;
-  color: var(--color-primary);
+  color: var(--color-primary-ink, var(--color-primary));
 }
 
 .payslip__sign {

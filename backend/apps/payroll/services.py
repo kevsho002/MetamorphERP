@@ -17,14 +17,14 @@ import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from apps.adherence.models import ActivityType, AdherenceDay, ScheduleSegment
+from apps.adherence.models import ActivityType, AdherenceDay, AdherenceException, ScheduleSegment
 from apps.hcm.models import Employee
 from apps.payroll import engine
 from apps.payroll.models import (
@@ -211,6 +211,12 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
                 if lo <= seg.occurrence_date <= hi and active(e.pk, seg.occurrence_date):
                     scheduled[(e.pk, seg.occurrence_date)] += seg.net_minutes * 60
 
+    # ---- Fase 22: programado del CORTE COMPLETO (base del rate): las fechas de los cortes internos, aunque el
+    #      colaborador ingrese a mitad o se retire antes. Los días sin horario vigente se proyectan con el horario
+    #      principal más cercano (el primero antes del ingreso; el último después del retiro).
+    for e in employees:
+        inputs[e.pk].cutoff_scheduled_seconds = cutoff_scheduled_seconds(book, e.pk, windows, rules.lookup(e.country_id))
+
     # ---- Web Timer y demás registros (bruto y nocturno)
     worked: dict[tuple[int, date], list[int]] = defaultdict(lambda: [0, 0])
     for t in TimeRecordDay.objects.filter(employee_id__in=ids, occurrence_date__range=(lo, hi)):
@@ -231,6 +237,9 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
 
     # ---- segmentos de WFM (información y séptimo día)
     absent: dict[int, set[date]] = defaultdict(set)
+    # Fase 22: tiempo justificado por AP con goce (permiso / justificación) para los días sin adherencia guardada.
+    leave_paid: dict[tuple[int, date], int] = defaultdict(int)
+    ap_with_segments: set[int] = set()
     hol_map = holidays_between({e.country_id for e in employees}, lo, hi)
     country = {e.pk: e.country_id for e in employees}
     for s in ScheduleSegment.objects.filter(employee_id__in=ids, shift_date__range=(lo, hi)).select_related("activity"):
@@ -244,6 +253,15 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
             inp.lateness_seconds += _seconds(s)
         elif not role and not act.is_paid and act.category != ActivityType.Category.MEAL:
             inp.unpaid_leave_seconds += _seconds(s)
+        if s.personnel_action_id:
+            ap_with_segments.add(s.personnel_action_id)
+            if not role and act.is_paid and not act.requires_acd_login:
+                leave_paid[(s.employee_id, s.shift_date)] += _seconds(s)
+    for x in AdherenceException.objects.filter(employee_id__in=ids, is_paid=True, start_at__gte=datetime.combine(lo, time()),
+                                                    start_at__lt=datetime.combine(hi + timedelta(days=1), time())):
+        d = x.start_at.date()
+        if x.personnel_action_id not in ap_with_segments and active(x.employee_id, d):
+            leave_paid[(x.employee_id, d)] += int((x.end_at - x.start_at).total_seconds())
     for emp_id, dates in absent.items():
         inputs[emp_id].absence_dates = sorted(dates)
 
@@ -279,7 +297,7 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
             inp.vacation_seconds += sch_s
             continue
         adh = adherence.get((emp_id, d))
-        paid = min(adh.paid_valid_seconds, sch_s) if adh is not None else min(w_s, sch_s)
+        paid = min(adh.paid_valid_seconds, sch_s) if adh is not None else min(w_s + leave_paid.get((emp_id, d), 0), sch_s)
         inp.paid_seconds += paid
         inp.night_seconds += min(night_s, paid)
         seg = hol_segments.get((emp_id, d))
@@ -294,6 +312,10 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
     for emp_id, (rule_value, account) in account_rules(ids, period.period_end).items():
         inputs[emp_id].seventh_day_penalty = rule_value
         inputs[emp_id].account = account
+
+    # ---- Fase 22: tipo de contrato del roster (retenciones de ley según el Optimum ES Payroll Hours)
+    for emp_id, contract in contract_types(ids, min(hi, period.period_end)).items():
+        inputs[emp_id].contract_type = contract
 
     # ---- AP aprobadas con efecto «Concepto de planilla» aún no pagadas en otra planilla vigente
     concepts = {c.code: c for c in PayConcept.objects.filter(is_active=True).exclude(calculation=PayConcept.Calculation.ENGINE)}
@@ -322,6 +344,44 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
                     continue
                 inputs[a.employee_id].actions.append(engine.ActionItem(a.pk, a.folio, c.code, Decimal(qty), a.effective_date))
     return Gathered(inputs=inputs, windows=per_windows)
+
+
+def cutoff_scheduled_seconds(book, employee_id: int, windows, night_lookup) -> int:
+    """Horas netas programadas (s) de TODAS las fechas de los cortes, proyectando el horario a los días fuera de la
+    relación laboral para que el rate por hora sea el del puesto y no dependa del ingreso / retiro."""
+    from apps.scheduling import engine as sch_engine
+    from apps.scheduling.models import ScheduleAssignment
+
+    primaries = [a for a in book.assignments(employee_id) if a.mode == ScheduleAssignment.Mode.PRIMARY]
+    if not primaries:
+        return 0
+    total = 0
+    for a, b in windows:
+        d = a - timedelta(days=1)
+        while d <= b:
+            current = book.assignments_on(employee_id, d)
+            if current:
+                defs = [book.definition(x) for x in current]
+            else:
+                nearest = primaries[0] if d < primaries[0].effective_start_date else primaries[-1]
+                defs = [book.definition(nearest)]
+            for definition in defs:
+                for inst in sch_engine.shift_instances(definition, d, night_lookup=night_lookup):
+                    for seg in inst.segments:
+                        if a <= seg.occurrence_date <= b:
+                            total += seg.net_minutes * 60
+            d += timedelta(days=1)
+    return total
+
+
+def contract_types(employee_ids, on: date) -> dict[int, str]:
+    """Tipo de contrato vigente en el roster (atributo contract_type); sin valor = PERMANENTE."""
+    from apps.roster.models import RosterAssignment
+
+    rows = RosterAssignment.objects.current().filter(employee_id__in=list(employee_ids), attribute__code="contract_type",
+                                                     effective_start__lte=on).filter(
+        Q(effective_end__isnull=True) | Q(effective_end__gte=on))
+    return {r.employee_id: r.value for r in rows}
 
 
 def account_rules(employee_ids, on: date) -> dict[int, tuple[bool, str]]:
@@ -510,6 +570,20 @@ def payslip_content(detail: PayrollDetail, run: PayrollRun, folio: str, lines: l
                    "deductions": money(detail.total_deductions), "net": money(detail.net_pay),
                    "employer": money(detail.employer_contributions)},
     }
+
+
+def preview_payslip(run: PayrollRun, code: str) -> tuple[dict, str | None, bool]:
+    """Fase 22: contenido de la boleta de un colaborador para el PDF: la boleta CONGELADA si ya se generó; si no, la
+    vista previa del cálculo en curso (preliminar). Devuelve (contenido, sello, es_preliminar)."""
+    d = PayrollDetail.objects.select_related("employee", "employee__cost_center").filter(
+        payroll=run.payroll, employee__employee_code=code).first()
+    if d is None:
+        raise PayrollError("El colaborador no está en esta planilla.", "not_found", 404)
+    s = Payslip.objects.filter(detail=d).first()
+    if s is not None:
+        return s.content, s.content_hash, False
+    lines = list(PayrollLine.objects.filter(detail=d).select_related("personnel_action").order_by("sort", "id"))
+    return payslip_content(d, run, None, lines), None, True
 
 
 def content_hash(content: dict) -> str:

@@ -379,6 +379,11 @@ export default function PayslipInventoryPage() {
                   <Link to={`/payroll/payslips/print?ids=${r.id}`} title={`Lote ${r.batch}`}>
                     {r.folio}
                   </Link>
+                  <div>
+                    <a href={payrollApi.payslipPdfUrl(r.id)} download title="Descargar la boleta en PDF">
+                      PDF
+                    </a>
+                  </div>
                 </td>
                 <td>
                   {r.full_name}

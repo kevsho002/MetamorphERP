@@ -1,3 +1,5 @@
+import { formatCurrency } from "../../../app/currency.js";
+
 const LOCALE = "es-SV";
 
 /** "2026-03-01" -> "01/03/2026" (sin desfase de zona horaria). */
@@ -15,15 +17,9 @@ export function formatDateTime(value) {
     : date.toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" });
 }
 
+/** Fase 22: el símbolo sale de la moneda del país de la cuenta / empresa (app/currency.js). */
 export function formatMoney(value, currency) {
-  if (value === undefined || value === null || value === "") return "—";
-  const n = Number(value);
-  if (Number.isNaN(n)) return String(value);
-  try {
-    return new Intl.NumberFormat(LOCALE, { style: "currency", currency: currency || "USD" }).format(n);
-  } catch {
-    return `${n.toFixed(2)} ${currency ?? ""}`.trim();
-  }
+  return formatCurrency(value, currency || "USD");
 }
 
 /** Fecha local de hoy en ISO (AAAA-MM-DD). */

@@ -3,9 +3,7 @@ import { Navigate } from "react-router-dom";
 import RequirePermission from "../../auth/RequirePermission.jsx";
 import ActivityTypesPage from "./pages/ActivityTypesPage.jsx";
 import AdherencePage from "./pages/AdherencePage.jsx";
-import AttendancePage from "./pages/AttendancePage.jsx";
 import ChangeRequestsPage from "./pages/ChangeRequestsPage.jsx";
-import JustificationsPage from "./pages/JustificationsPage.jsx";
 import PlanningPage from "./pages/PlanningPage.jsx";
 
 const VIEW = "wfm.view";
@@ -29,17 +27,17 @@ export const wfmModule = {
     { to: "/wfm/planner", label: "Planificación (grilla IEX)" },
     { to: "/wfm/requests", label: "Cola de aprobación" },
     { to: "/wfm/adherence", label: "Adherencia" },
-    { to: "/wfm/justifications", label: "Justificaciones (AP)" },
     { to: "/wfm/activities", label: "Actividades (segmentos)" },
-    { to: "/wfm/attendance", label: "Asistencias y downtimes" },
   ],
   routes: [
     { path: "wfm/planner", element: guard(PlanningPage) },
     { path: "wfm/requests", element: guard(ChangeRequestsPage) },
     { path: "wfm/adherence", element: guard(AdherencePage) },
-    { path: "wfm/justifications", element: guard(JustificationsPage) },
+    // Fase 22: las justificaciones son AP del módulo regular (Acciones de personal › Justificaciones y permisos).
+    { path: "wfm/justifications", element: createElement(Navigate, { to: "/personnel-actions/justifications", replace: true }) },
     { path: "wfm/activities", element: guard(ActivityTypesPage) },
     { path: "wfm/hierarchy", element: createElement(Navigate, { to: "/roster/hierarchy", replace: true }) }, // movida al roster (Fase 18)
-    { path: "wfm/attendance", element: guard(AttendancePage) },
+    // Fase 22: se retiró el mock «Asistencias y downtimes» (la asistencia vive en la grilla IEX y la adherencia).
+    { path: "wfm/attendance", element: createElement(Navigate, { to: "/wfm/adherence", replace: true }) },
   ],
 };

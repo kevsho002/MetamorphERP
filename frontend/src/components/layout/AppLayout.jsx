@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { AgentPresenceProvider } from "../../modules/acd/AgentPresenceContext.jsx";
+import { clearPersonal, loadProfile } from "../../app/appearance.js";
+import { AppLogo } from "../ui/Brand.jsx";
 import AnnouncementBar from "./AnnouncementBar.jsx";
 import SessionWatcher from "./SessionWatcher.jsx";
-import TimeFormatSelect from "./TimeFormatSelect.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 import Sidebar, { useSidebarPin } from "./Sidebar.jsx";
 import UserPresenceMenu from "./UserPresenceMenu.jsx";
 
@@ -15,6 +17,12 @@ export default function AppLayout({ modules }) {
   const [pinned, togglePin] = useSidebarPin();
   const { hasPermission } = useAuth();
   const location = useLocation();
+
+  // Fase 23: preferencias visuales del perfil (paleta personal, modo, densidad, tiempos).
+  useEffect(() => {
+    loadProfile();
+    return clearPersonal;
+  }, []);
 
   // En móvil, el menú se cierra al navegar.
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -38,8 +46,10 @@ export default function AppLayout({ modules }) {
           >
             ☰
           </button>
-          <span className="topbar__brand">Metamorph ERP</span>
-          <TimeFormatSelect />
+          <Link to="/" className="topbar__brand" aria-label="Metamorph ERP — inicio">
+            <AppLogo />
+          </Link>
+          <NotificationBell />
           <UserPresenceMenu />
         </header>
 

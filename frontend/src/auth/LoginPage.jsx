@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useClientConfig } from "../app/ClientConfigContext.jsx";
+import { ThemedLogo } from "../components/ui/Brand.jsx";
 import { useAuth } from "./AuthContext.jsx";
 
 export default function LoginPage() {
@@ -28,7 +29,10 @@ export default function LoginPage() {
   return (
     <main className="auth-screen">
       <form className="card auth-card" onSubmit={onSubmit} noValidate>
-        <h1 className="page-title">Metamorph ERP</h1>
+        <h1 className="page-title auth-brand">
+          <ThemedLogo />
+          <span className="sr-only">Metamorph ERP</span>
+        </h1>
         <p className="muted">Inicie sesión con su usuario corporativo.</p>
         {config.maintenance_mode && (
           <p className="alert alert--warn" role="status">

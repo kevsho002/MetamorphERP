@@ -1,0 +1,445 @@
+/* ==========================================================================
+   Fase 23 — Logos corporativos, selector jerárquico de colaboradores, paleta
+   personal y calendario de feriados.
+   ========================================================================== */
+
+/* -------------------------------------------------------------- marca -- */
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  overflow: visible;
+}
+
+.brand-logo--app {
+  display: block;
+  width: auto;
+  height: 30px;
+}
+
+.brand-logo--doc {
+  display: block;
+  width: auto;
+  height: 36px;
+}
+
+.brand-mark {
+  display: inline-block;
+  flex: none;
+  object-fit: contain;
+}
+
+.sidebar__mark {
+  margin-left: auto;
+  margin-right: 6px;
+  opacity: 0.9;
+}
+
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+
+.auth-brand .brand-logo--doc,
+.auth-brand .brand-logo--app {
+  height: 48px;
+}
+
+.brand-themed__dark {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .brand-themed__light {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .brand-themed__dark {
+  display: block !important;
+}
+
+.payslip__logo {
+  height: 34px;
+  margin-bottom: 4px;
+}
+
+.settle-check__logo {
+  height: 28px;
+}
+
+/* Los documentos siempre se ven como el papel: fondo blanco y tinta oscura (también en modo noche). */
+:root[data-theme="dark"] .payslip,
+:root[data-theme="dark"] .settle-check {
+  --color-surface: #ffffff;
+  --color-bg: #f4f6f9;
+  --color-text: #1c2430;
+  --color-muted: #5b6676;
+  --color-border: #dde3ea;
+  --color-primary-ink: #1f3a5f;
+  background: #ffffff;
+  color: #1c2430;
+}
+
+@media (max-width: 480px) {
+  .brand-logo--app {
+    height: 24px;
+  }
+}
+
+/* ------------------------------------------------ selector jerárquico -- */
+.emp-picker {
+  position: relative;
+}
+
+.emp-picker__input {
+  width: 100%;
+}
+
+.emp-picker__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: 0 12px 28px rgb(15 30 50 / 0.18);
+}
+
+.emp-picker__option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.emp-picker__option[aria-selected="true"],
+.emp-picker__option:hover {
+  background: var(--color-info-bg);
+}
+
+.emp-picker__name {
+  font-weight: 600;
+}
+
+.emp-picker__meta {
+  grid-column: 1 / -1;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.emp-picker__tag {
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.emp-picker__empty {
+  padding: 8px 12px;
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.emp-picker__selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  font-weight: 400;
+}
+
+/* ------------------------------------------------------ paleta personal -- */
+.appearance__layer {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.appearance__layer h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.appearance__layers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+
+/* ------------------------------------------------ calendario de feriados -- */
+.holcal__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.holcal__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.holcal__title {
+  min-width: 11rem;
+  margin: 0 6px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.holcal__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+}
+
+.holcal__legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.holcal__month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.holcal__dow {
+  padding: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.holcal__day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 92px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.holcal__day.is-out {
+  opacity: 0.38;
+}
+
+.holcal__day.is-weekend {
+  background: var(--color-bg);
+}
+
+.holcal__day.is-today {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.holcal__day.can-add {
+  cursor: pointer;
+}
+
+.holcal__day.can-add:hover {
+  border-color: var(--color-accent);
+}
+
+.holcal__num {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.holcal__chip {
+  display: block;
+  width: 100%;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 0;
+  border-left: 3px solid var(--chip, #2f7dd1);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--chip, #2f7dd1) 16%, var(--color-surface));
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.holcal__chip.is-inactive {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.holcal__chip-meta {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--color-muted);
+}
+
+.holcal__year {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.holcal__mini {
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.holcal__mini h3 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  text-transform: capitalize;
+}
+
+.holcal__mini h3 button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary-ink, var(--color-primary));
+  font: inherit;
+  font-weight: 700;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.holcal__mini-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.holcal__mini-grid span,
+.holcal__mini-grid button {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.holcal__mini-grid .is-dow {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.holcal__mini-grid .is-holiday {
+  background: var(--chip, #2f7dd1);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.holcal__mini-grid .is-today {
+  outline: 2px solid var(--color-accent);
+}
+
+.holcal__editor {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(15 23 42 / 45%);
+}
+
+.holcal__editor form {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 20px 50px rgb(15 23 42 / 30%);
+}
+
+.holcal__editor .form-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.holcal__upcoming {
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.holcal__upcoming li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .holcal__day {
+    min-height: 58px;
+    padding: 3px;
+  }
+
+  .holcal__chip {
+    padding: 2px 3px;
+    font-size: 0.62rem;
+  }
+
+  .holcal__chip-meta {
+    display: none;
+  }
+
+  .holcal__dow {
+    font-size: 0.62rem;
+    padding: 2px;
+  }
+
+  .holcal__editor .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .holcal__title {
+    min-width: 0;
+  }
+}

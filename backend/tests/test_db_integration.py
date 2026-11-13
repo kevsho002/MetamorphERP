@@ -17,7 +17,7 @@ from apps.hcm.services.employee_code import compute_check_digit, generate_employ
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 MODELS = sorted(
-    (m for m in apps.get_models() if m._meta.app_label in {"common", "hcm", "wfm", "payroll", "accounts"}),
+    (m for m in apps.get_models() if m._meta.app_label in {"common", "hcm", "payroll", "accounts"}),
     key=lambda m: m._meta.db_table,
 )
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { currencySymbol } from "../../../app/currency.js";
 import { formatDate, formatDateTime, formatMoney } from "../../hcm/lib/format.js";
 import { useTimeFormat } from "../../../app/timeFormat.js";
 import { RUN_STATUS, num, payrollApi } from "../api.js";
@@ -249,7 +250,7 @@ export default function PayrollRunPage() {
                 Feriado
               </th>
               <th scope="col" className="num">
-                Horas extra ($)
+                Horas extra ({currencySymbol(run?.currency)})
               </th>
               <th scope="col" className="num">
                 Otros devengos
@@ -414,7 +415,9 @@ function BreakdownModal({ runId, code, onClose }) {
         <div className="pay-modal__body">
           {state.loading && <p className="muted">Cargando…</p>}
           {state.error && <p className="error-box">{state.error}</p>}
-          {data && <PayslipDocument content={previewContent(data)} preview={!data.payslip} />}
+          {data && (
+            <PayslipDocument content={previewContent(data)} preview={!data.payslip} pdfHref={payrollApi.employeePdfUrl(runId, code)} />
+          )}
         </div>
       </div>
     </div>
