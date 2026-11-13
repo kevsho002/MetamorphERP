@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import HasActionPermission, PasswordChangeNotRequired, user_permissions
-from apps.accounts.roles import Perm
+from apps.accounts.roles import Perm, Role
 from apps.common.models import Country
 from apps.hcm.models import Employee
 from apps.personnel_actions import services
@@ -260,3 +260,83 @@ class SchedulePreviewView(_View):
             return Response({"valid": False, "errors": exc.errors, "detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"valid": True, **body})
 
+
+
+# ================================================================ Fase 21: ciclo de vida y roles por tipo de AP
+class LifecycleView(_View):
+    """Estado, antigüedad (congelada por suspensiones) e historial laboral. El indicador de recontratación y la alerta
+    formal solo se entregan a quien administra empleados (Recursos Humanos / Administración)."""
+
+    method_permissions = {"get": Perm.HCM_VIEW}
+
+    def get(self, request, code: str):
+        from apps.personnel_actions import lifecycle
+
+        employee = get_object_or_404(Employee, employee_code=code.upper())
+        hr = Perm.HCM_MANAGE in user_permissions(request.user)
+        today = timezone.localdate()
+        current = lifecycle.active_suspension(employee, today)
+        body = {
+            "employee_code": employee.employee_code, "full_name": employee.full_name,
+            "status": employee.employment_status, "status_label": employee.get_employment_status_display(),
+            "hire_date": employee.hire_date, "termination_date": employee.termination_date,
+            "tenure": lifecycle.tenure(employee, today),
+            "active_suspension": lifecycle.event_dict(current, hr=hr) if current else None,
+            "history": lifecycle.history(employee, hr=hr), "is_hr": hr,
+        }
+        if hr:
+            last = lifecycle.last_termination(employee)
+            body["rehire_eligible"] = last.rehire_eligible if last else None
+            body["rehire_alert"] = lifecycle.rehire_alert(employee)
+        return Response(body, headers=NO_STORE)
+
+
+class RoleMatrixView(_View):
+    """Quién elabora y quién firma cada tipo de AP. GET para todos los que ven AP; PATCH solo el Administrador."""
+
+    method_permissions = {"get": Perm.ACTIONS_VIEW, "patch": Perm.ACTIONS_VIEW}
+
+    def get(self, request):
+        types = ActionType.objects.prefetch_related("steps").order_by("display_order", "name")
+        return Response({
+            "roles": [{"value": r, "label": services.ROLE_LABELS.get(r, r)} for r in Role.values],
+            "can_edit": request.user.effective_role == Role.ADMIN,
+            "results": [{
+                "code": t.code, "name": t.name, "effect": t.effect, "effect_label": t.get_effect_display(), "is_active": t.is_active,
+                "creator_roles": t.creator_roles or [], "admin_signs_any_step": t.admin_signs_any_step,
+                "create_permission": t.create_permission, "view_permission": t.view_permission,
+                "steps": [{"order": s.order, "label": s.label, "role": s.role} for s in t.steps.all()],
+            } for t in types],
+        }, headers=NO_STORE)
+
+    def patch(self, request, code: str | None = None):
+        if request.user.effective_role != Role.ADMIN:
+            return Response({"detail": "Solo el Administrador cambia los roles de las AP."}, status=status.HTTP_403_FORBIDDEN)
+        t = get_object_or_404(ActionType, code=(code or "").upper())
+        data = request.data if isinstance(request.data, dict) else {}
+        changes = {}
+        if "creator_roles" in data:
+            roles = data.get("creator_roles") or []
+            if not isinstance(roles, list) or any(r not in Role.values for r in roles):
+                return Response({"detail": f"Roles válidos: {', '.join(Role.values)}."}, status=status.HTTP_400_BAD_REQUEST)
+            t.creator_roles = [r for r in Role.values if r in roles]
+            changes["creator_roles"] = t.creator_roles
+        if "admin_signs_any_step" in data:
+            t.admin_signs_any_step = bool(data["admin_signs_any_step"])
+            changes["admin_signs_any_step"] = t.admin_signs_any_step
+        steps = data.get("steps") or []
+        by_order = {s.order: s for s in t.steps.all()}
+        for item in steps:
+            step = by_order.get(int(item.get("order", 0) or 0)) if isinstance(item, dict) else None
+            if step is None or item.get("role") not in Role.values:
+                return Response({"detail": "Paso o rol inválido."}, status=status.HTTP_400_BAD_REQUEST)
+            if step.role != item["role"]:
+                step.role = item["role"]
+                step.save(update_fields=["role"])
+                changes[f"step_{step.order}"] = step.role
+        t.save()
+        from apps.system.audit import Category, record
+
+        record("action_type_roles_changed", Category.PERSONNEL_ACTIONS, f"Roles del tipo de AP {t.code} actualizados.",
+               request=request, actor=request.user, target_type="ActionType", target_id=t.code, details=changes)
+        return self.get(request)

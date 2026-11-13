@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "apps.hcm",
     "apps.wfm",
     "apps.payroll",
+    "apps.holidays",  # Fase 21: calendario de feriados y Holiday Segments
     "apps.accounts",
     "apps.employees",
     "apps.system",

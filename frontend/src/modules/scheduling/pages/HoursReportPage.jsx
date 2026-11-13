@@ -1,3 +1,4 @@
+import { useTimeFormat } from "../../../app/timeFormat.js";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Pagination from "../../../components/ui/Pagination.jsx";
@@ -10,6 +11,7 @@ const PAGE_SIZE = 100;
 
 /** Horas teóricas (turno asignado) frente a reales (registros de tiempo), por FECHA DE OCURRENCIA. */
 export default function HoursReportPage() {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const catalogs = useSchedulingCatalogs();
   const [params, setParams] = useSearchParams();
   const monday = mondayOf(todayIso());

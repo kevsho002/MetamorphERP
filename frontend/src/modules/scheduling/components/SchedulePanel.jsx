@@ -1,3 +1,4 @@
+import { useTimeFormat } from "../../../app/timeFormat.js";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatDate, todayIso } from "../../hcm/lib/format.js";
@@ -15,6 +16,7 @@ import { FLAG_CLASS, addDays, fmtMinutes, fmtStamp, mondayOf } from "../lib/time
  * ADICIONALES con fecha de fin; las horas programadas de todas se suman por fecha de ocurrencia.
  */
 export default function SchedulePanel({ employee }) {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const code = employee.employee_code;
   const [state, setState] = useState({ loading: true, data: null, error: null });
 
@@ -255,7 +257,7 @@ function WeekView({ code, refreshKey }) {
               <ul>
                 {data.records.map((r) => (
                   <li key={r.id}>
-                    {r.kind === "INTERVAL" ? `${fmtStamp(r.start_at)} → ${fmtStamp(r.end_at)}` : `${formatDate(r.occurrence_date)} · ${fmtMinutes(r.minutes)} h`}{" "}
+                    {r.kind === "INTERVAL" ? `${fmtStamp(r.start_at)} → ${fmtStamp(r.end_at)}` : `${formatDate(r.occurrence_date)} · ${fmtMinutes(r.minutes)}`}{" "}
                     <span className="muted small">
                       ({r.source_label}
                       {r.shift_date ? `, turno del ${formatDate(r.shift_date)}` : ", sin turno"})

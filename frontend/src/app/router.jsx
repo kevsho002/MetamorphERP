@@ -9,13 +9,14 @@ import { schedulingModule } from "../modules/scheduling/index.js";
 import { personnelActionsModule } from "../modules/personnelActions/index.js";
 import { acdModule } from "../modules/acd/index.js";
 import { systemModule } from "../modules/system/index.js";
+import { portalModule } from "../modules/portal/index.js";
 
 /**
  * Registro de módulos (monolito modular en el frontend).
  * Cada módulo exporta { id, label, basePath, routes[] } y se monta aquí;
  * el menú lateral se genera a partir de este mismo arreglo.
  */
-export const modules = [hcmModule, rosterModule, generalIdsModule, personnelActionsModule, schedulingModule, acdModule, wfmModule, payrollModule, systemModule];
+export const modules = [portalModule, hcmModule, rosterModule, generalIdsModule, personnelActionsModule, schedulingModule, acdModule, wfmModule, payrollModule, systemModule];
 
 export const router = createBrowserRouter([
   {

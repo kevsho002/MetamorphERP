@@ -1,3 +1,4 @@
+import { useTimeFormat } from "../../../app/timeFormat.js";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { formatDate } from "../../hcm/lib/format.js";
@@ -11,6 +12,7 @@ import { FLAG_CLASS, fmtMinutes, fmtStamp } from "../lib/time.js";
  * Es la base para la auditoría diaria y el detalle de turnos.
  */
 export default function DayDetailPage() {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const { code, date } = useParams();
   const [state, setState] = useState({ loading: true, data: null, error: null });
 
@@ -140,7 +142,7 @@ export default function DayDetailPage() {
             <ul className="day-records">
               {d.records.map((r) => (
                 <li key={r.id}>
-                  {r.kind === "INTERVAL" ? `${fmtStamp(r.start_at)} → ${fmtStamp(r.end_at)}` : `${fmtMinutes(r.minutes)} h reportadas`}{" "}
+                  {r.kind === "INTERVAL" ? `${fmtStamp(r.start_at)} → ${fmtStamp(r.end_at)}` : `${fmtMinutes(r.minutes)} reportadas`}{" "}
                   <span className="muted small">
                     ({r.source_label}
                     {r.shift_date ? `, turno del ${formatDate(r.shift_date)}` : ", sin turno"}; en esta fecha:{" "}
@@ -182,7 +184,7 @@ export default function DayDetailPage() {
               <dt>Reglas de almuerzo</dt>
               <dd>
                 {d.lunch_rules.length
-                  ? d.lunch_rules.map((r) => `≥ ${fmtMinutes(r.min_block_minutes)} h continuas → ${r.lunch_minutes} min (${r.enforcement_label.toLowerCase()})`).join("; ")
+                  ? d.lunch_rules.map((r) => `≥ ${fmtMinutes(r.min_block_minutes)} continuas → ${r.lunch_minutes} min (${r.enforcement_label.toLowerCase()})`).join("; ")
                   : "Sin regla vigente"}
               </dd>
             </div>

@@ -1,3 +1,4 @@
+import { useTimeFormat } from "../../../app/timeFormat.js";
 import { Fragment, useEffect, useState } from "react";
 import { DAY_KEYS, DAY_LABELS, fmtMinutes, grossMinutes } from "../../scheduling/lib/time.js";
 import { actionsApi } from "../api.js";
@@ -58,6 +59,7 @@ export function scheduleFromSummary(summary) {
  * horas continuas corresponde almuerzo (advertencia u obligatorio).
  */
 export default function WeeklyScheduleEditor({ value, onChange, country, employeeCode, effectiveDate, errors = [], disabled, idPrefix = "schedule" }) {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const days = value?.days ?? {};
   const [preview, setPreview] = useState({ data: null, error: null });
   const setBlocks = (key, blocks) => onChange({ ...value, days: { ...days, [key]: blocks && blocks.length ? blocks : null } });
@@ -241,7 +243,7 @@ export default function WeeklyScheduleEditor({ value, onChange, country, employe
         Turno partido: use «+ bloque». El almuerzo es opcional y solo una duración (su hora la programa WFM).{" "}
         {lunchRules.length > 0 &&
           `Regla de almuerzo del país: ${lunchRules
-            .map((r) => `jornada continua ≥ ${fmtMinutes(r.min_block_minutes)} h → ${r.lunch_minutes} min (${r.enforcement_label.toLowerCase()})`)
+            .map((r) => `jornada continua ≥ ${fmtMinutes(r.min_block_minutes)} → ${r.lunch_minutes} min (${r.enforcement_label.toLowerCase()})`)
             .join("; ")}. `}
         {preview.data?.night_rule
           ? `Nocturnidad aplicada: ${preview.data.night_rule.start}–${preview.data.night_rule.end} (+${preview.data.night_rule.surcharge_percent} %).`

@@ -16,4 +16,8 @@ export const actionsApi = {
   employee: (code, options) => api.get(`/personnel-actions/employees/${enc(code)}/`, options),
   missingInitial: (options) => api.get("/personnel-actions/missing-initial/", options),
   schedulePreview: (payload, options) => api.post("/personnel-actions/schedule-preview/", payload, options),
+  // Fase 21: ciclo de vida (antigüedad, suspensiones, terminaciones, reingresos) y roles por tipo de AP
+  lifecycle: (code, options) => api.get(`/personnel-actions/employees/${enc(code)}/lifecycle/`, options),
+  roleMatrix: (options) => api.get("/personnel-actions/role-matrix/", options),
+  updateRoles: (code, payload) => api.patch(`/personnel-actions/role-matrix/${enc(code)}/`, payload),
 };

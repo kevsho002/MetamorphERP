@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import RequirePermission from "../../auth/RequirePermission.jsx";
 import DayDetailPage from "./pages/DayDetailPage.jsx";
+import HolidaysPage from "./pages/HolidaysPage.jsx";
 import HoursReportPage from "./pages/HoursReportPage.jsx";
 import PayCyclesPage from "./pages/PayCyclesPage.jsx";
 
@@ -21,10 +22,12 @@ export const schedulingModule = {
   menu: [
     { to: "/scheduling/report", label: "Horas teóricas vs reales" },
     { to: "/scheduling/pay-cycles", label: "Ciclos de pago y cortes" },
+    { to: "/scheduling/holidays", label: "Calendario de feriados" },
   ],
   routes: [
     { path: "scheduling/report", element: guard(VIEW, HoursReportPage) },
     { path: "scheduling/employees/:code/days/:date", element: guard(VIEW, DayDetailPage) },
     { path: "scheduling/pay-cycles", element: guard(VIEW, PayCyclesPage) },
+    { path: "scheduling/holidays", element: guard(VIEW, HolidaysPage) },
   ],
 };

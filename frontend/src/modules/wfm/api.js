@@ -1,4 +1,5 @@
 import { api, toQuery } from "../../services/apiClient.js";
+import { formatSeconds } from "../../app/timeFormat.js";
 
 const enc = encodeURIComponent;
 
@@ -84,11 +85,9 @@ export function clockLabel(minutes) {
   return full.endsWith(":00") ? full.slice(0, 5) : full;
 }
 
-/** 7:05:30 (horas:minutos:segundos) a partir de segundos, sin redondear al minuto. */
+/** Total de tiempo en segundos según el formato global (Fase 21): "07:05:30" u "7.09" horas decimales. */
 export function fmtHM(seconds) {
-  const total = Math.round(Math.abs(seconds ?? 0));
-  const sign = (seconds ?? 0) < 0 ? "-" : "";
-  return `${sign}${Math.floor(total / 3600)}:${String(Math.floor((total % 3600) / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  return formatSeconds(seconds ?? 0);
 }
 
 /** Duración legible: 930 → "15 min 30 s"; 3600 → "1 h". */

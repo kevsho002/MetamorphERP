@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 const PIN_KEY = "metamorph.sidebar.pinned";
+const GROUPS_KEY = "metamorph.sidebar.groups"; // Fase 21: grupos expandidos / contraídos por el usuario
 const OPEN_DELAY_MS = 120; // evita que se abra al cruzar el menú con el cursor de camino a otro lado
 const CLOSE_DELAY_MS = 280;
 
@@ -15,6 +16,7 @@ const ICONS = {
   acd: "M4 14v-2a8 8 0 0 1 16 0v2M4 14a2 2 0 0 1 2-2h1v6H6a2 2 0 0 1-2-2zM20 14a2 2 0 0 0-2-2h-1v6h1a2 2 0 0 0 2-2zM18 18a4 4 0 0 1-4 3h-2",
   wfm: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   payroll: "M3 6h18v12H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M6 9v.01M18 15v.01",
+  portal: "M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6",
   system: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 13.7H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10.3 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1",
 };
 
@@ -40,6 +42,31 @@ function readPinned() {
   }
 }
 
+function readGroups() {
+  try {
+    return JSON.parse(window.localStorage.getItem(GROUPS_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+/** Grupos del menú expandidos (▲) o contraídos (▼). Sin preferencia, solo se expande el módulo activo. */
+function useGroupState() {
+  const [state, setState] = useState(readGroups);
+  const toggle = useCallback((id, current) => {
+    setState((prev) => {
+      const next = { ...prev, [id]: !current };
+      try {
+        window.localStorage.setItem(GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // sin almacenamiento: dura esta visita
+      }
+      return next;
+    });
+  }, []);
+  return [state, toggle];
+}
+
 /** Preferencia «menú fijo» del usuario (se recuerda en este navegador). */
 export function useSidebarPin() {
   const [pinned, setPinned] = useState(readPinned);
@@ -63,6 +90,7 @@ export function useSidebarPin() {
  */
 export default function Sidebar({ modules, hasPermission, pinned, onTogglePin, mobileOpen }) {
   const [expanded, setExpanded] = useState(false);
+  const [groups, toggleGroup] = useGroupState();
   const timer = useRef(null);
   const location = useLocation();
 
@@ -111,14 +139,29 @@ export default function Sidebar({ modules, hasPermission, pinned, onTogglePin, m
         </div>
         {modules.map((m) => {
           const items = m.menu.filter((item) => hasPermission(item.permission));
-          const activeModule = items.some((item) => (item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)));
+          // Activo también en sus subrutas (p. ej. /payroll/runs/7 bajo «Cálculo de planilla», que es `end`).
+          const root = `/${(m.basePath ?? "").split("/")[1] ?? ""}`;
+          const activeModule = location.pathname === root || location.pathname.startsWith(`${root}/`)
+            || items.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+          const open = groups[m.id] ?? activeModule;
           return (
-            <section key={m.id} className={`sidebar__group${activeModule ? " is-active" : ""}`}>
+            <section key={m.id} className={`sidebar__group${activeModule ? " is-active" : ""}${open ? " is-open" : ""}`}>
               <h2 className="sidebar__title" title={m.label}>
-                <ModuleIcon module={m} />
-                <span className="sidebar__title-text">{m.label}</span>
+                <button
+                  type="button"
+                  className="sidebar__toggle"
+                  aria-expanded={open}
+                  aria-controls={`sidebar-group-${m.id}`}
+                  onClick={() => toggleGroup(m.id, open)}
+                >
+                  <ModuleIcon module={m} />
+                  <span className="sidebar__title-text">{m.label}</span>
+                  <span className="sidebar__arrow" aria-hidden="true">
+                    {open ? "▲" : "▼"}
+                  </span>
+                </button>
               </h2>
-              <div className="sidebar__links">
+              <div className="sidebar__links" id={`sidebar-group-${m.id}`} hidden={!open}>
                 {items.map((item) => (
                   <NavLink key={item.to} to={item.to} end={item.end} className="sidebar__link">
                     {item.label}

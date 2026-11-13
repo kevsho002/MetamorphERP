@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { todayIso } from "../../hcm/lib/format.js";
 import { actionsApi } from "../api.js";
+import RehireAlert from "../components/RehireAlert.jsx";
 import WeeklyScheduleEditor, { defaultSchedule, scheduleFromSummary, scheduleInput } from "../components/WeeklyScheduleEditor.jsx";
 
 /** Asignación ADICIONAL (Fase 10): parte de un bloque corto el sábado; se suma al horario principal. */
@@ -87,7 +88,9 @@ export default function NewActionPage() {
     effective_date: todayIso(),
     justification: "",
     values: {},
+    acknowledge: [],
   });
+  const [rehireAlert, setRehireAlert] = useState(null);
   const [employee, setEmployee] = useState(null);
   const [busy, setBusy] = useState(null);
   const [result, setResult] = useState(null);
@@ -137,7 +140,16 @@ export default function NewActionPage() {
   const set = (patch) => {
     setForm((f) => ({ ...f, ...patch }));
     setResult(null);
+    if ("employee_code" in patch || "action_type" in patch) setRehireAlert(null);
   };
+  // Fase 21: la alerta formal de recontratación llega como advertencia de la validación.
+  useEffect(() => {
+    const w = (result?.warnings ?? []).find((x) => x.code === "rehire_not_recommended");
+    if (w) setRehireAlert(w);
+  }, [result]);
+  const acknowledged = form.acknowledge.includes("rehire_not_recommended");
+  const setAcknowledged = (on) =>
+    setForm((f) => ({ ...f, acknowledge: on ? ["rehire_not_recommended"] : [] }));
   const setValue = (key, value) => set({ values: { ...form.values, [key]: value } });
   const errorsFor = useMemo(() => {
     const map = {};
@@ -204,7 +216,12 @@ export default function NewActionPage() {
                 </option>
               ))}
             </select>
-            {type && <small className="field__hint">{type.description}</small>}
+            {type && (
+              <small className="field__hint">
+                {type.description}
+                {type.creator_roles_labels?.length > 0 && ` · La elaboran: ${type.creator_roles_labels.join(", ")}.`}
+              </small>
+            )}
           </label>
           <label className="field">
             <span className="field__label">
@@ -260,14 +277,16 @@ export default function NewActionPage() {
           <p className="muted small">
             Firmas: {type.steps.length ? type.steps.map((s) => `${s.order}. ${s.label} (${s.role_label})`).join(" → ") : "sin firmas (se aprueba al enviarse)"}
             {type.creator_signs_first_step && " · si su rol corresponde al primer paso, su envío cuenta como esa firma"}
+            {type.admin_signs_any_step === false && " · firma estricta: cada paso lo firma únicamente su rol"}
           </p>
         )}
+        <RehireAlert alert={rehireAlert} acknowledged={acknowledged} onAcknowledge={setAcknowledged} />
         {result && (
           <div className={`alert ${result.valid ? "alert--ok" : "alert--error"}`} role="status">
             <p className="alert__text">{result.valid ? "La AP es válida." : "Revise lo siguiente:"}</p>
             {[...(result.errors ?? []), ...(result.warnings ?? [])].length > 0 && (
               <ul className="msg-list">
-                {[...(result.errors ?? []), ...(result.warnings ?? [])].map((m, i) => (
+                {[...(result.errors ?? []), ...(result.warnings ?? []).filter((w) => w.code !== "rehire_not_recommended")].map((m, i) => (
                   <li key={i}>{m.message}</li>
                 ))}
               </ul>
@@ -284,7 +303,7 @@ export default function NewActionPage() {
           <button type="button" className="button button--ghost" disabled={!type || Boolean(busy)} onClick={() => run("draft")}>
             {busy === "draft" ? "Guardando…" : "Guardar borrador"}
           </button>
-          <button type="submit" className="button" disabled={!type || Boolean(busy)}>
+          <button type="submit" className="button" disabled={!type || Boolean(busy) || (rehireAlert && !acknowledged)}>
             {busy === "submit" ? "Enviando…" : "Enviar a aprobación"}
           </button>
         </div>

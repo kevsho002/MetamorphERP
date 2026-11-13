@@ -43,6 +43,10 @@ from apps.personnel_actions.models import (
 )
 from apps.system.audit import Category, record
 
+from apps.personnel_actions import lifecycle  # noqa: E402  (Fase 21)
+
+ROLE_LABELS = {Role.ADMIN: "Administrador", Role.HR: "Generalista de RRHH", Role.WFM: "WFM", Role.EMPLOYEE: "Empleado"}
+
 END_DATE_KEY = "vigente_hasta"  # campo DATE obligatorio de las AP de asignación ADICIONAL de horario
 
 TRUE = {"1", "true", "si", "sí", "yes", "y", "s", "x"}
@@ -103,18 +107,28 @@ def can_view_type(user, t: ActionType) -> bool:
     return "actions.view" in perms and t.view_permission in perms
 
 
+def role_allowed_to_create(user, t: ActionType) -> bool:
+    """Fase 21: si el tipo define los roles que lo elaboran (Generalista de RRHH, WFM, Administrador), solo ellos."""
+    roles = t.creator_roles or []
+    return not roles or getattr(user, "effective_role", None) in roles
+
+
 def can_create_type(user, t: ActionType) -> bool:
     perms = user_permissions(user)
-    return "actions.create" in perms and t.create_permission in perms and can_view_type(user, t)
+    return ("actions.create" in perms and t.create_permission in perms and can_view_type(user, t)
+            and role_allowed_to_create(user, t))
 
 
 def visible_type_ids(user) -> list[int]:
     return [t.pk for t in ActionType.objects.all() if can_view_type(user, t)]
 
 
-def can_sign_role(user, role: str) -> bool:
+def can_sign_role(user, role: str, t: ActionType | None = None) -> bool:
+    """Firma el rol del paso. El Administrador firma cualquier paso salvo que el tipo exija el rol exacto (Fase 21)."""
     if not getattr(user, "is_authenticated", False):
         return False
+    if t is not None and not t.admin_signs_any_step:
+        return user.effective_role == role
     return user.effective_role in (role, Role.ADMIN)
 
 
@@ -225,7 +239,9 @@ def validate(action_type: ActionType | None, employee: Employee | None, data: di
     elif not action_type.is_active and instance is None:
         check.error("action_type", f"El tipo «{action_type.name}» está inactivo.")
     elif user is not None and not for_initial and not can_create_type(user, action_type):
-        check.error("action_type", f"Su rol no puede elaborar acciones de tipo «{action_type.name}».", "forbidden")
+        roles = ", ".join(ROLE_LABELS.get(r, r) for r in (action_type.creator_roles or []))
+        check.error("action_type", f"Su rol no puede elaborar acciones de tipo «{action_type.name}»"
+                    + (f" (la elaboran: {roles})." if roles else "."), "forbidden")
     if employee is None:
         check.error("employee_code", "Indique el empleado (ID corporativo).", "required")
     if not check.ok:
@@ -245,7 +261,7 @@ def validate(action_type: ActionType | None, employee: Employee | None, data: di
     if eff:
         if eff < employee.hire_date:
             check.error("effective_date", f"La fecha efectiva no puede ser anterior al ingreso del empleado ({fmt(employee.hire_date)}).")
-        if employee.termination_date and eff > employee.termination_date:
+        if employee.termination_date and eff > employee.termination_date and action_type.effect != Effect.REHIRE:
             check.error("effective_date", f"El empleado terminó su relación laboral el {fmt(employee.termination_date)}.")
 
     # Valores EAV
@@ -309,6 +325,25 @@ def validate(action_type: ActionType | None, employee: Employee | None, data: di
             check.error("values.new_base_salary", "El nuevo salario debe ser mayor que cero.")
         elif amount is not None and amount == employee.base_salary:
             check.warn("values.new_base_salary", "El nuevo salario es igual al salario actual.", "same_salary")
+    elif action_type.effect == Effect.PAYROLL:
+        # Fase 20: horas extra, bonificaciones, vacaciones o descuentos que el motor de planilla paga / descuenta.
+        numeric = {k: v for k, (attr, v) in values.items() if attr.data_type in (DataType.DECIMAL, DataType.INTEGER)}
+        if not numeric:
+            check.error(None, f"El tipo «{action_type.name}» es un concepto de planilla pero no tiene campos de monto, horas o días. "
+                              "Corríjalo en /admin/.", "config")
+        elif not any((v or 0) > 0 for v in numeric.values()):
+            check.error(f"values.{next(iter(numeric))}", "Indique un monto, horas o días mayor que cero.", "required")
+        elif check.ok and eff and employee:
+            from apps.payroll.services import closed_payroll_on
+
+            closed = closed_payroll_on(employee, eff)
+            if closed:
+                check.warn("effective_date", (
+                    f"La planilla {closed} que contiene esa fecha ya está cerrada: la AP se pagará (o descontará) en la "
+                    "siguiente planilla que se calcule."), "payroll_closed")
+    elif action_type.effect in (Effect.SUSPENSION, Effect.TERMINATION, Effect.REHIRE):
+        lifecycle.validate_effect(check, action_type, employee, eff, values, data, instance=instance,
+                                  enforce_ack=user is not None and not for_initial)
     return check
 
 
@@ -363,7 +398,7 @@ def sign_block_reason(action: PersonnelAction, user) -> str | None:
         return "La AP ya no tiene pasos pendientes."
     if not can_view_type(user, action.action_type):
         return "Su rol no puede ver este tipo de AP."
-    if not can_sign_role(user, step.role):
+    if not can_sign_role(user, step.role, action.action_type):
         return f"El paso «{step.label}» lo firma el rol {step.get_role_display()}."
     if action.action_type.require_distinct_signers and action.signatures.filter(signer=user).exists():
         return "Este tipo de AP exige firmantes distintos: usted ya firmó un paso."
@@ -405,6 +440,13 @@ def create(check: Check, *, user=None, request=None, submit_now: bool = False) -
     record("personnel_action_created", Category.PERSONNEL_ACTIONS,
            f"AP {action.folio} «{t.name}» elaborada para {action.employee.employee_code} (efectiva {fmt(action.effective_date)}).",
            request=request, actor=user, target=action.employee, details={"folio": action.folio, "type": t.code})
+    if c.get("rehire_acknowledged"):
+        alert = next((w for w in check.warnings if w.get("code") == lifecycle.REHIRE_ALERT), None)
+        record("rehire_alert_acknowledged", Category.PERSONNEL_ACTIONS,
+               f"{getattr(user, 'username', 'sistema')} reconoció la alerta formal de recontratación de {action.employee.employee_code} "
+               f"(colaborador NO recomendado) al elaborar la AP {action.folio}.",
+               request=request, actor=user, target=action.employee,
+               details={"folio": action.folio, "alert": alert["details"] if alert else []})
     if submit_now:
         submit(action, user=user, request=request)
     return action
@@ -441,7 +483,7 @@ def submit(action: PersonnelAction, *, user=None, request=None) -> PersonnelActi
     steps = list(action.action_type.steps.all())
     if not steps:
         _approve(action, user=user, request=request)
-    elif action.action_type.creator_signs_first_step and user is not None and can_sign_role(user, steps[0].role):
+    elif action.action_type.creator_signs_first_step and user is not None and can_sign_role(user, steps[0].role, action.action_type):
         sign(action, user=user, decision=Decision.APPROVED, comment="Elaborada y enviada a aprobación.", request=request)
     return action
 
@@ -515,6 +557,12 @@ def apply_effect(action: PersonnelAction, *, user=None, request=None, today: dat
         amount = values["new_base_salary"].value_decimal
         Employee.objects.filter(pk=action.employee_id).update(base_salary=amount)
         summary = f"Salario base de {action.employee.employee_code} actualizado por la AP {action.folio}."
+    elif effect == Effect.PAYROLL:
+        summary = f"AP {action.folio} aprobada: la toma la siguiente planilla que se calcule (Fase 20)."
+    elif effect in (Effect.SUSPENSION, Effect.TERMINATION, Effect.REHIRE):
+        summary = lifecycle.apply(action, values, user=user, today=today)
+        if summary is None:
+            return False  # se aplica en su fecha efectiva (apply_due_actions)
     else:
         summary = f"AP {action.folio} registrada (sin efecto automático)."
     action.applied_at = timezone.now()
@@ -532,6 +580,7 @@ def apply_due_actions(today: date | None = None) -> list[str]:
         with transaction.atomic():
             if apply_effect(action, today=today):
                 done.append(action.folio)
+    lifecycle.sync_statuses(today)  # Fase 21: suspensiones que inician o terminan hoy
     return done
 
 
@@ -660,6 +709,8 @@ def type_dict(t: ActionType, user) -> dict:
         } for a in t.attributes.all() if a.is_active],
         "steps": [{"order": s.order, "label": s.label, "role": s.role, "role_label": s.get_role_display()} for s in t.steps.all()],
         "creator_signs_first_step": t.creator_signs_first_step, "require_distinct_signers": t.require_distinct_signers,
+        "creator_roles": t.creator_roles or [], "creator_roles_labels": [ROLE_LABELS.get(r, r) for r in (t.creator_roles or [])],
+        "admin_signs_any_step": t.admin_signs_any_step,
     }
 
 

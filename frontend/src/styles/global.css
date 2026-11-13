@@ -126,6 +126,32 @@ code {
   display: none; /* el pin solo aplica en escritorio */
 }
 
+/* Fase 21: selector global del formato de tiempo (HH:MM:SS u horas decimales). */
+.time-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: inherit;
+  opacity: 0.95;
+}
+
+.time-format + .presence {
+  margin-left: 0;
+}
+
+.time-format select {
+  padding: 3px 6px;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .time-format__label {
+    display: none;
+  }
+}
+
 .sidebar--open {
   transform: translateX(0);
   box-shadow: 4px 0 16px rgb(0 0 0 / 0.12);
@@ -149,6 +175,46 @@ code {
   letter-spacing: 0.06em;
   color: var(--color-muted);
   white-space: nowrap;
+}
+
+/* Fase 21: el título del grupo es un botón que expande (▲) o contrae (▼) sus enlaces. */
+.sidebar__title {
+  padding: 0;
+}
+
+.sidebar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar__toggle:hover,
+.sidebar__toggle:focus-visible {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.sidebar__arrow {
+  margin-left: auto;
+  font-size: 0.6rem;
+  color: var(--color-muted);
+  transition: opacity 0.15s ease;
+}
+
+.sidebar__links[hidden] {
+  display: none;
 }
 
 .sidebar__icon {
@@ -283,6 +349,7 @@ code {
 
   /* Contraído: solo íconos; el texto y los enlaces quedan ocultos pero enfocables (el foco expande el menú). */
   .sidebar--collapsed .sidebar__head-label,
+  .sidebar--collapsed .sidebar__arrow,
   .sidebar--collapsed .sidebar__title-text {
     opacity: 0;
     width: 0;

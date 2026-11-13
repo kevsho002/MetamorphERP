@@ -8,6 +8,8 @@ import "./styles/roster.css";
 import "./styles/scheduling.css";
 import "./styles/acd.css";
 import "./styles/wfm.css";
+import "./styles/payroll.css";
+import "./styles/phase21.css";
 import "./styles/layout.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

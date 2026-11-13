@@ -20,6 +20,8 @@ api_v1 = [
     path("", include("apps.personnel_actions.urls")),
     path("", include("apps.acd.urls")),
     path("", include("apps.adherence.urls")),
+    path("", include("apps.payroll.urls")),
+    path("", include("apps.holidays.urls")),  # Fase 21: calendario de feriados
 ]
 
 admin.site.site_header = "Metamorph ERP — Administración"

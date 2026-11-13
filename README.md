@@ -22,6 +22,8 @@ En producción Django sirve también el build de React (un solo despliegue, mism
 | 17 | Planificación WFM estilo Nice IEX: filtros jerárquicos (Management Unit, cliente / marca, Operations Director → Operations Manager → Account Supervisor → Team Manager), barra de segmentos con drag & drop, grilla horizontal por intervalos, vista histórica del agente desde su contratación |
 | 18 | Ajustes de la planificación IEX: panel de filtros plegable, barra compacta de iconos con flechas, segmentos como línea delgada con icono cada 15 min, granularidad al segundo (modelos, SQL Server y UI), cadena de mando centralizada en el roster y audit trail por agente y fecha |
 | 19 | Reglas de asistencia y respaldo legal en WFM: Lateness automático bloqueado (solo se reemplaza con AP), Unjustified Absence con Legal Benefit Lunch, categorías del Time Utilization con desplegable en la barra, segmentos que exigen AP, ventana flotante del día (edición / lectura) y cola de aprobación de WFM |
+| 20 | Planilla automática y boletas físicas: parámetros salariales de El Salvador con vigencia (ISSS, AFP, Renta, INSAFORP, horas extra, nocturnidad, vacaciones), cálculo por periodo de pago con el Web Timer, las AP de pago, los segmentos de WFM y la adherencia; cierre con generación masiva de boletas (sello SHA-256) e inventario de RRHH por lote: impresas, firmadas y archivadas |
+| 21 | Refinamiento operativo y nómina avanzada: menú con flechas ▲/▼, tiempos en HH:MM:SS u horas decimales, suspensiones (antigüedad congelada), terminación con indicador de recontratación, reingreso con alerta formal, roles por tipo de AP; motor de planilla 100 % por horas (estándar BPO) con pre-cierre, boletas preliminares y excepciones; séptimo opcional por cuenta; calendario de feriados con Holiday Segments; liquidaciones e indemnizaciones con lotes de pago y cheques |
 
 ```
 MetamorphERP/
@@ -126,6 +128,8 @@ MetamorphERP/
 | `dbo.sch_schedule_assignment`, `sch_night_rule`, `sch_lunch_rule`, `sch_pay_cycle`, `sch_pay_period`, `sch_attendance_cutoff`, `sch_time_record`, `sch_time_record_day`; vistas `vw_SchTimeByOccurrenceDate`, `vw_SchScheduleAssignment`, `vw_SchScheduleDay`, `vw_SchPayPeriod`, `vw_SchAttendanceCutoff`, `vw_SchPayrollHours`, `vw_SchLunchRule` | migraciones de Django (Fases 8–11) | modelos administrados |
 | `dbo.acd_division`, `acd_primary_status`, `acd_aux_code`, `acd_agent_group`, `acd_group_aux`, `acd_agent_member`, `acd_agent_session`, `acd_status_segment`; vistas `vw_AcdStatusSegment`, `vw_AcdAgentSession` | migraciones de Django (Fase 11) | modelos administrados |
 | `dbo.pa_action_type`, `pa_action_attribute`, `pa_approval_step`, `pa_action`, `pa_action_value`, `pa_action_signature`, `pa_folio_sequence`; vista `vw_PersonnelAction` | migraciones de Django (Fase 9) | modelos administrados |
+| `dbo.pay_setting`, `pay_concept`, `pay_payroll_run`, `pay_payroll_line`, `pay_payslip_batch`, `pay_payslip`; vistas `vw_PayPayrollDetail`, `vw_PayPayslipInventory`; triggers sobre `fin.Payroll` / `fin.PayrollDetail` / `fin.PayrollDeduction` | migraciones de Django (Fase 20) | modelos administrados |
+| `dbo.pa_employment_event`, `hol_holiday`, `hol_holiday_segment`, `pay_account_rule`, `pay_payroll_iteration`, `pay_payroll_exception`, `pay_settlement`, `pay_settlement_line`, `pay_settlement_batch`; vistas `vw_EmployeeTenure`, `vw_HolidaySegment`, `vw_PaySettlement` | migraciones de Django (Fase 21) | modelos administrados |
 
 `accounts.0002` y `employees.0002` crean FKs reales hacia tablas SQL-first (`hcm.Employee`, `core.catCountry`,
 `core.catCostCenter`). Por eso **`deploy.ps1` va antes de `migrate`**.
@@ -1026,6 +1030,108 @@ antes WFM › Jerarquía operativa).
 * Todo queda en el **audit trail** de la línea: Lateness / ausencia detectados, reemplazos con AP, solicitudes y su
   resolución (aprobaciones). `vw_AdhScheduleSegment` agrega origen, bloqueo, AP de respaldo, departamento y categoría.
 
+## Planilla automática y boletas físicas (Fase 20)
+
+> Desde la **Fase 21** el motor calcula **por horas** (ver más abajo): los descuentos por días de esta sección (ausencia, Lateness, permisos y tiempo no laborado) quedaron retirados, porque las horas no laboradas simplemente no se pagan.
+
+* **Parámetros salariales** (`/payroll/settings`, `pay_setting`, por país y con vigencia): días por mes (30), horas por
+  día (8), recargo de horas extra (100 %), prima de vacaciones (30 %) y qué penalizaciones se descuentan: Unjustified
+  Absence (un día) con **pérdida del séptimo día** por semana, Lateness no reemplazado con AP, permisos sin goce
+  (actividades no pagadas, salvo el almuerzo) y tiempo no laborado (programado pagado que la adherencia no validó). Una
+  vigencia que respaldó una planilla cerrada ya no se edita: se crea otra (la anterior se cierra el día previo).
+  * Retenciones de ley en `fin.catDeductionType` / `fin.DeductionBracket` (SQL-first): ISSS y AFP laborales y
+    patronales, Renta por tramos e **INSAFORP** patronal (1 %). Se agregan la tabla de Renta **quincenal** (la mensual
+    entre dos) y, si una frecuencia no tiene tramos, se proyecta la mensual. Un cambio de tasa, tope o tabla es una
+    **nueva vigencia** desde la pantalla. El recargo nocturno sale de la regla de nocturnidad del país (Fase 8).
+  * **Valores de referencia**: valídelos contra la normativa vigente antes de producción.
+  * Conceptos de la boleta (`pay_concept`): salario, descuentos de tiempo, nocturnidad, horas extra, bonificación, prima
+    de vacaciones y descuentos por AP, con su afectación a ISSS / AFP y a Renta (editable).
+* **Motor de cálculo** (`apps/payroll/engine.py`, funciones puras): salario del periodo proporcional a los días
+  contratados (salario base **mensual** del expediente); salario diario = mensual / 30; hora = diario / 8.
+  * Insumos por **ventana de asistencia** (los cortes internos mapeados al periodo de pago, Fase 11):
+    * Web Timer y demás registros: minutos y nocturnidad.
+    * Segmentos de WFM: Unjustified Absence, Lateness, permisos sin goce.
+    * Adherencia guardada: Out of Adherence sin estado pagado.
+    * **AP aprobadas** con el nuevo efecto «Concepto de planilla».
+  * Tipos de AP sembrados: `AP_HORAS_EXTRA` (diurnas / nocturnas; sin ella el Unpaid Excess Login no se paga),
+    `AP_BONIFICACION`, `AP_VACACIONES` (prima) y `AP_DESCUENTO` (después de retenciones; el líquido nunca es negativo).
+    Una AP se paga una sola vez (índice único y SQL 50093); si su planilla ya cerró, la toma la siguiente.
+  * ISSS / AFP con tope proporcional al periodo; Renta sobre devengado gravado − ISSS − AFP laborales.
+* **Flujo** (`/payroll`, una planilla por periodo de pago del ciclo predeterminado):
+  * **Calcular** se puede repetir mientras la planilla esté abierta.
+  * **Cerrar** exige los cortes de asistencia cerrados y un cálculo posterior a su cierre. Congela la planilla y
+    **genera en masa las boletas** (folio, contenido congelado con sello SHA-256) y un **lote por departamento**
+    (centro de costos).
+  * **Pagar**; **anular** (solo abierta) libera las AP.
+  * También: `python manage.py payroll_calculate --cycle SV_QUINCENAL --date AAAA-MM-DD [--approve]`.
+  * Resultado en `fin.Payroll` / `fin.PayrollDetail` / `fin.PayrollDeduction` y el desglose por línea en
+    `pay_payroll_line` (origen y AP de cada monto). Exportación CSV y vista `vw_PayPayrollDetail` (ISSS, AFP y Renta por
+    colaborador).
+* **Inventario de boletas físicas** (`/payroll/inventory`, solo RRHH / Administración, `pay_payslip` y
+  `pay_payslip_batch`): lotes por quincena / mes y departamento con su avance y ubicación de archivo. Cada boleta lleva
+  su estado:
+  * **impresa** o faltante por imprimir, con el número de impresiones;
+  * **firmada en físico** o pendiente de firma, con la fecha de firma;
+  * **archivada**, con su ubicación.
+  * Acciones masivas y reversión con motivo; todo queda en la auditoría.
+  * Filtros por año, mes, quincena, departamento, impresión, firma y archivo. Vista `vw_PayPayslipInventory`.
+  * Impresión en el navegador, una boleta por página con el espacio de firma: «Imprimir y registrar» suma la impresión.
+* **SQL Server**:
+  * 50090: una planilla cerrada o pagada no cambia su detalle, retenciones ni líneas.
+  * 50091: el estado solo avanza y los totales de una planilla cerrada no cambian.
+  * 50092: las boletas solo nacen de una planilla cerrada, coinciden con su línea, no se eliminan y su contenido no
+    cambia; solo cambia el control físico.
+  * 50093: la AP de una línea debe estar aprobada, ser del mismo empleado y ser un concepto de planilla.
+
+## Refinamiento operativo, ciclo de vida y nómina por horas (Fase 21)
+
+* **Menú lateral**: cada módulo se expande (▲) o se contrae (▼); por defecto solo el módulo activo y se recuerda en el
+  navegador.
+* **Formato dual de tiempos**: el selector «Tiempos» de la barra superior alterna al instante entre **HH:MM:SS** y
+  **horas decimales** (dos decimales) en todos los totales: horas teóricas vs reales, adherencia, planificación, reporte
+  de estados ACD, planilla, boletas, feriados y horarios (`src/app/timeFormat.js`).
+* **Ciclo de vida por AP** (pestaña «Ciclo de vida» del expediente, `pa_employment_event`, vista `vw_EmployeeTenure`):
+  * `AP_SUSPENSION` (Generalista de RRHH → Administración): el colaborador queda **Inactivo** los días indicados, sin
+    goce (la planilla no programa ni paga esos días) y su **antigüedad se congela**; vuelve a Activo solo al terminar
+    (tarea diaria `apply_due_personnel_actions`). No se cruzan dos suspensiones.
+  * `AP_TERMINACION` (motivo, **indicador interno de recomendación de recontratación** y observaciones; solo la ve
+    quien administra empleados): estado Terminado en la fecha efectiva y apertura automática de su **liquidación**.
+  * `AP_REINGRESO`: reactiva a un terminado; la fecha efectiva es su nueva fecha de ingreso y la **antigüedad se
+    reinicia** (el historial conserva el ingreso y la terminación anteriores). Si su última terminación **no lo
+    recomendó**, la validación emite una **alerta formal** con su historial y antecedentes; el generalista debe
+    reconocerla expresamente para continuar (queda en la auditoría).
+  * SQL Server 50094: el historial laboral no se elimina ni cambia (solo se registra la reactivación automática).
+* **Roles por tipo de AP** (`/personnel-actions/roles`): qué perfiles **elaboran** cada tipo (Generalista de RRHH, WFM,
+  Administrador) y qué rol **firma** cada paso; con «firma estricta» el Administrador tampoco firma pasos de otro rol.
+  Solo el Administrador la cambia.
+* **Motor de planilla 100 % por horas** (estándar BPO, `apps/payroll/engine.py`):
+  * Salario del periodo = mensual × 50 % (quincena) × fracción contratada y no suspendida.
+  * **Rate por hora** = salario del periodo ÷ **horas programadas** del corte interno (horario vigente de las AP).
+  * Salario = rate × **horas reales pagables**: lo validado por la adherencia guardada o, sin ella, el Web Timer hasta lo
+    programado. Los días de vacaciones (AP) se pagan como programados; el exceso sin AP de horas extra no se paga.
+  * Recargos: nocturnidad (rate × 25 % de la regla del país, 19:00–06:00), horas extra de AP (× 2; nocturnas × 2 ×
+    1.25) y feriado laborado (rate × recargo del feriado: pago doble). Luego ISSS, AFP y Renta (DGII) por tramos.
+  * **Séptimo día opcional**: apagado por defecto; cada **cuenta** (cliente del roster) lo activa en Parámetros
+    salariales › Séptimo día por cuenta (`pay_account_rule`).
+* **Pre-cierre**: el motor se corre las veces que haga falta antes del cierre (manual o diario con
+  `python manage.py payroll_calculate --scheduled`, desde N días antes del fin del corte; p. ej. desde el 10 para el corte
+  que cierra el 24). Cada corrida queda en `pay_payroll_iteration` y publica la **boleta preliminar** en el portal del
+  colaborador (**Mi portal › Mis boletas**). El agente reporta **excepciones** a su Team Manager vigente (o Planillas las
+  atiende en **Mi portal › Excepciones de planilla**); el **cierre (freeze) exige que no queden abiertas**.
+* **Calendario de feriados** (`/scheduling/holidays`, `hol_holiday`; nacionales de El Salvador 2026–2027 sembrados):
+  si un colaborador labora en un feriado se genera automáticamente su **Holiday Segment** (`hol_holiday_segment`, el
+  contenedor del turno con las horas laboradas). Va aparte de los segmentos de WFM: no cambia la adherencia y en un
+  feriado la conciliación **no marca Unjustified Absence ni Lateness**. SQL 50097: un feriado con Holiday Segments no
+  cambia de fecha ni se elimina. También `python manage.py holiday_segments --from --to`.
+* **Liquidaciones e indemnizaciones** (`/payroll/settlements`, separadas de la planilla ordinaria):
+  * Se abren al aplicarse la AP de terminación. Indemnización por despido sin causa (30 días por año, tope 4 salarios
+    mínimos, mínimo 15 días), prestación por renuncia voluntaria (2 o más años: 15 días por año, tope 2 mínimos),
+    vacaciones proporcionales con prima y aguinaldo proporcional (15 / 19 / 21 días; exento hasta 2 mínimos), con
+    ajustes manuales y retenciones de ley. Los días laborados hasta la terminación los paga la planilla ordinaria.
+  * Aprobar **sella** el contenido (SHA-256, SQL 50095). Se pagan en **lotes propios** (cheque con número correlativo o
+    transferencia): cerrar → imprimir cheques / comprobantes con el **monto en letras** → pagado (SQL 50096).
+  * Parámetros (salario mínimo, días y topes) en Parámetros salariales; **valores de referencia** a validar.
+
 ## Fuera de alcance (por ahora)
 * JWT / SSO (la API usa sesión + CSRF; el SPA no maneja tokens).
 * Restablecimiento de contraseña por correo (no hay servicio de correo; el reseteo lo hace RRHH/Administración).
@@ -1037,9 +1143,10 @@ antes WFM › Jerarquía operativa).
 * Pantalla React para administrar catálogos (clientes, marcas, líneas, bancos, herramientas y tipos de ID): hoy en
   `/admin/` (rol Administrador).
   No existe un rol «QA»: los reportes de roster los consultan Administrador, RRHH y WFM.
-* Reportes y Power BI; motor de planilla (montos, horas extra) y procesador de ingesta WFM (`wfm.*`, Fase 1).
-  La Fase 8 calcula horas, nocturnidad y su equivalente de recargo, pero no montos.
-* Programación exacta del almuerzo y descansos (responsabilidad operativa de WFM) y feriados.
+* Reportes y Power BI y procesador de ingesta WFM (`wfm.*`, Fase 1). La planilla no calcula el aguinaldo anual de
+  diciembre (solo el proporcional de las liquidaciones), el recálculo anual de Renta (junio / diciembre) ni envía
+  planillas al ISSS / AFP / banco; los cheques se imprimen en papel en blanco (sin formato del banco).
+* Programación exacta del almuerzo y descansos (responsabilidad operativa de WFM).
 * AP masivas (un cambio de horario para muchos colaboradores a la vez) y jerarquía por jefe inmediato (hoy las firmas
   se asignan por rol).
 * Terminar antes de tiempo una asignación adicional (hoy rige hasta su `vigente_hasta`; para extenderla se elabora

@@ -1,0 +1,36 @@
+from django.urls import path
+
+from apps.payroll import views
+
+urlpatterns = [
+    path("payroll/catalogs/", views.CatalogsView.as_view(), name="payroll-catalogs"),
+    path("payroll/periods/", views.PeriodsView.as_view(), name="payroll-periods"),
+    path("payroll/runs/", views.RunsView.as_view(), name="payroll-runs"),
+    path("payroll/runs/<int:pk>/", views.RunDetailView.as_view(), name="payroll-run"),
+    path("payroll/runs/<int:pk>/employees/<str:code>/", views.RunEmployeeView.as_view(), name="payroll-run-employee"),
+    path("payroll/runs/<int:pk>/iterations/", views.IterationsView.as_view(), name="payroll-run-iterations"),
+    path("payroll/runs/<int:pk>/<str:action>/", views.RunActionView.as_view(), name="payroll-run-action"),
+    path("payroll/settings/", views.SettingsView.as_view(), name="payroll-settings"),
+    path("payroll/settings/<int:pk>/", views.SettingDetailView.as_view(), name="payroll-setting"),
+    path("payroll/concepts/<str:code>/", views.ConceptView.as_view(), name="payroll-concept"),
+    path("payroll/deduction-types/<int:pk>/versions/", views.DeductionVersionView.as_view(), name="payroll-deduction-version"),
+    path("payroll/payslips/", views.PayslipsView.as_view(), name="payroll-payslips"),
+    path("payroll/payslips/print/", views.PayslipPrintView.as_view(), name="payroll-payslips-print"),
+    path("payroll/payslips/actions/", views.PayslipActionView.as_view(), name="payroll-payslips-actions"),
+    path("payroll/payslips/<int:pk>/", views.PayslipDetailView.as_view(), name="payroll-payslip"),
+    path("payroll/batches/", views.BatchesView.as_view(), name="payroll-batches"),
+    path("payroll/batches/<int:pk>/", views.BatchDetailView.as_view(), name="payroll-batch"),
+    # Fase 21
+    path("payroll/me/payslips/", views.MyPayslipsView.as_view(), name="payroll-my-payslips"),
+    path("payroll/exceptions/", views.ExceptionsView.as_view(), name="payroll-exceptions"),
+    path("payroll/exceptions/<int:pk>/resolve/", views.ExceptionDetailView.as_view(), name="payroll-exception-resolve"),
+    path("payroll/account-rules/", views.AccountRulesView.as_view(), name="payroll-account-rules"),
+    path("payroll/account-rules/<int:client_id>/", views.AccountRuleView.as_view(), name="payroll-account-rule"),
+    path("payroll/settlements/", views.SettlementsView.as_view(), name="payroll-settlements"),
+    path("payroll/settlements/<int:pk>/", views.SettlementDetailView.as_view(), name="payroll-settlement"),
+    path("payroll/settlements/<int:pk>/<str:action>/", views.SettlementDetailView.as_view(), name="payroll-settlement-action"),
+    path("payroll/settlement-batches/", views.SettlementBatchesView.as_view(), name="payroll-settlement-batches"),
+    path("payroll/settlement-batches/<int:pk>/", views.SettlementBatchDetailView.as_view(), name="payroll-settlement-batch"),
+    path("payroll/settlement-batches/<int:pk>/<str:action>/", views.SettlementBatchDetailView.as_view(),
+         name="payroll-settlement-batch-action"),
+]

@@ -50,6 +50,11 @@ class Effect(models.TextChoices):
     NONE = "NONE", "Solo registro (sin efecto automático)"
     SCHEDULE = "SCHEDULE", "Asigna el horario desde la fecha efectiva"
     SALARY = "SALARY", "Actualiza el salario base en la fecha efectiva"
+    PAYROLL = "PAYROLL", "Concepto de planilla (se paga o descuenta en la planilla del periodo)"
+    # Fase 21: ciclo de vida del colaborador
+    SUSPENSION = "SUSPENSION", "Suspensión disciplinaria (inactivo por N días; congela la antigüedad)"
+    TERMINATION = "TERMINATION", "Terminación / renuncia (estado Terminado; indicador de recontratación)"
+    REHIRE = "REHIRE", "Reingreso (reactiva al colaborador; la antigüedad corre desde la nueva fecha)"
 
 
 class ScheduleMode(models.TextChoices):
@@ -62,7 +67,7 @@ class ActionType(models.Model):
     name = models.CharField("nombre", max_length=150)
     description = models.CharField("descripción", max_length=500, blank=True)
     category = models.CharField("categoría", max_length=12, choices=Category, default=Category.OTHER)
-    effect = models.CharField("efecto al aprobarse", max_length=8, choices=Effect, default=Effect.NONE)
+    effect = models.CharField("efecto al aprobarse", max_length=12, choices=Effect, default=Effect.NONE)
     folio_prefix = models.CharField("prefijo del folio", max_length=6, validators=[RegexValidator(r"^[A-Z]{2,6}$", "2 a 6 letras MAYÚSCULAS.")])
     is_initial_schedule = models.BooleanField(
         "AP fundacional de horario", default=False,
@@ -82,6 +87,15 @@ class ActionType(models.Model):
     require_distinct_signers = models.BooleanField(
         "firmantes distintos", default=False,
         help_text="Cada paso debe firmarlo una persona distinta (segregación de funciones).",
+    )
+    # Fase 21: control estricto por rol (Generalista de RRHH, WFM, Administrador).
+    creator_roles = models.JSONField(
+        "roles que la crean", default=list, blank=True,
+        help_text='Lista de roles que pueden elaborar este tipo (p. ej. ["HR", "ADMIN"]). Vacía = cualquier rol con el permiso.',
+    )
+    admin_signs_any_step = models.BooleanField(
+        "el Administrador firma cualquier paso", default=True,
+        help_text="Si se desmarca, cada paso lo firma ÚNICAMENTE el rol indicado en la cadena.",
     )
     display_order = models.PositiveSmallIntegerField("orden", default=100)
     is_active = models.BooleanField("activo", default=True)
@@ -285,3 +299,58 @@ class FolioSequence(models.Model):
     class Meta:
         db_table = "pa_folio_sequence"
         constraints = [models.UniqueConstraint(fields=["prefix", "year"], name="uq_pa_folio_sequence")]
+
+
+# ============================================================== Fase 21: ciclo de vida del colaborador
+class TerminationReason(models.TextChoices):
+    RESIGNATION = "RENUNCIA", "Renuncia voluntaria"
+    DISMISSAL_NO_CAUSE = "DESPIDO_SIN_CAUSA", "Despido sin causa justificada"
+    DISMISSAL_CAUSE = "DESPIDO_CON_CAUSA", "Despido con causa justificada"
+    END_OF_CONTRACT = "FIN_CONTRATO", "Fin de contrato a plazo"
+    MUTUAL = "MUTUO_ACUERDO", "Mutuo acuerdo"
+    ABANDONMENT = "ABANDONO", "Abandono de labores"
+
+
+class EmploymentEvent(models.Model):
+    """Historial laboral: ingreso, suspensiones, terminaciones y reingresos. La antigüedad (tenure) se calcula desde la
+    fecha de ingreso VIGENTE (el reingreso la reinicia) menos los días suspendidos (la suspensión la congela)."""
+
+    class Kind(models.TextChoices):
+        HIRE = "HIRE", "Ingreso"
+        SUSPENSION = "SUSPENSION", "Suspensión disciplinaria"
+        TERMINATION = "TERMINATION", "Terminación"
+        REHIRE = "REHIRE", "Reingreso"
+
+    employee = models.ForeignKey(Employee, on_delete=models.DO_NOTHING, db_column="employee_id", db_constraint=False,
+                                 related_name="employment_events", verbose_name="empleado")
+    kind = models.CharField("evento", max_length=12, choices=Kind)
+    start_date = models.DateField("desde")
+    end_date = models.DateField("hasta", null=True, blank=True, help_text="Último día de la suspensión.")
+    action = models.ForeignKey(PersonnelAction, on_delete=models.PROTECT, null=True, blank=True, related_name="employment_events",
+                               verbose_name="AP")
+    termination_reason = models.CharField("motivo de terminación", max_length=20, choices=TerminationReason, blank=True)
+    rehire_eligible = models.BooleanField("recomendable para recontratación", null=True, blank=True)
+    hr_notes = models.TextField("observaciones internas de RRHH", max_length=2000, blank=True)
+    previous_hire_date = models.DateField("ingreso anterior", null=True, blank=True)
+    previous_termination_date = models.DateField("terminación anterior", null=True, blank=True)
+    rehire_acknowledged = models.BooleanField("alerta de recontratación reconocida", default=False)
+    reactivated_at = models.DateTimeField("reactivado al terminar la suspensión", null=True, blank=True)
+    created_at = models.DateTimeField("registrado", auto_now_add=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        db_table = "pa_employment_event"
+        ordering = ["employee_id", "start_date", "id"]
+        verbose_name = "evento laboral"
+        verbose_name_plural = "historial laboral"
+        indexes = [models.Index(fields=["employee", "kind", "start_date"], name="ix_pa_emp_event")]
+        constraints = [
+            models.CheckConstraint(condition=Q(kind__in=["HIRE", "SUSPENSION", "TERMINATION", "REHIRE"]), name="ck_pa_emp_event_kind"),
+            models.CheckConstraint(condition=Q(end_date__isnull=True) | Q(end_date__gte=models.F("start_date")), name="ck_pa_emp_event_dates"),
+            models.CheckConstraint(condition=~Q(kind="SUSPENSION") | Q(end_date__isnull=False), name="ck_pa_emp_event_susp_end"),
+            models.CheckConstraint(condition=~Q(kind="TERMINATION") | Q(rehire_eligible__isnull=False), name="ck_pa_emp_event_rehire"),
+            models.UniqueConstraint(fields=["action"], condition=Q(action__isnull=False), name="uq_pa_emp_event_action"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} {self.start_date}"

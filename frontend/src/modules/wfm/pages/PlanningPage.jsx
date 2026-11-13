@@ -1,3 +1,4 @@
+import { useTimeFormat } from "../../../app/timeFormat.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { todayIso } from "../../hcm/lib/format.js";
@@ -69,6 +70,7 @@ function PinIcon({ pinned }) {
  *   pre-contenedor abre la ventana flotante del día (tabla + edición / solicitudes); Lateness y ausencias automáticas.
  */
 export default function PlanningPage() {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "agent" ? "agent" : "grid";
   const date = params.get("date") ?? todayIso();

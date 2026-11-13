@@ -1,15 +1,13 @@
+import { formatMinutes } from "../../../app/timeFormat.js";
+
 /** Utilidades de tiempo del módulo de horarios (los minutos se muestran como H:MM). */
 
 export const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 export const DAY_LABELS = { mon: "Lunes", tue: "Martes", wed: "Miércoles", thu: "Jueves", fri: "Viernes", sat: "Sábado", sun: "Domingo" };
 
-/** 450 -> "7:30"; -15 -> "-0:15". */
+/** Duración en minutos según el formato global (Fase 21): 450 -> "07:30:00" o "7.50"; -15 -> "-00:15:00". */
 export function fmtMinutes(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  const n = Math.round(Number(value));
-  const sign = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  return `${sign}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, "0")}`;
+  return formatMinutes(value);
 }
 
 /** "2026-10-05T22:00" -> "05/10 22:00" */

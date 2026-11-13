@@ -39,6 +39,12 @@ def system_activity(role: str) -> ActivityType | None:
     return ActivityType.objects.filter(system_role=role, is_active=True).first()
 
 
+def _holiday(employee: Employee, d: date):
+    from apps.holidays.services import holiday_on
+
+    return holiday_on(employee.country_id, d)
+
+
 def is_inactive(employee: Employee, d: date) -> bool:
     """Personal inactivo en la fecha: no activo, aún no contratado o dado de baja."""
     if employee.employment_status != Employee.Status.ACTIVE:
@@ -137,6 +143,8 @@ def detect_lateness(employee: Employee, *, login_at: datetime, user=None) -> lis
     out = []
     for d in (login.date() - timedelta(days=1), login.date()):
         book = ScheduleBook([employee.pk], d, d)
+        if _holiday(employee, d):
+            continue  # Fase 21: en un feriado no se marca Lateness (el tiempo laborado va al Holiday Segment)
         for c in _containers(book, employee.pk, d, d):
             if c.shift_date == d and c.start < login < c.end:
                 out += _insert_lateness(employee, c, login, book=book, user=user)
@@ -235,10 +243,14 @@ def reconcile(employees: list[Employee], d: date, *, user=None, request=None) ->
     """Concilia la asistencia de la fecha de turno: Lateness de quienes llegaron tarde y Unjustified Absence (con Legal
     Benefit Lunch) de quienes no se presentaron en un bloque ya terminado. Idempotente."""
     now = now_local()
+    from apps.holidays.services import generate_segments, holidays_between
+
     out = {"date": d.isoformat(), "lateness": 0, "absences": 0, "on_leave": 0, "inactive": 0, "frozen": 0, "present": 0,
-           "pending": 0, "rows": []}
+           "pending": 0, "holiday": 0, "rows": []}
     ids = [e.pk for e in employees]
     book = ScheduleBook(ids, d, d)
+    holidays = holidays_between({e.country_id for e in employees}, d, d)
+    on_holiday = []
     for e in employees:
         containers = [c for c in _containers(book, e.pk, d, d) if c.shift_date == d]
         if not containers:
@@ -249,6 +261,12 @@ def reconcile(employees: list[Employee], d: date, *, user=None, request=None) ->
             continue
         if closed_cutoff_hit(e, d, d):
             out["frozen"] += 1
+            continue
+        if (e.country_id, d) in holidays:
+            # Fase 21: feriado — no hay Unjustified Absence ni Lateness; si laboró, su tiempo va al Holiday Segment.
+            on_holiday.append(e)
+            out["holiday"] += 1
+            out["rows"].append({"employee_code": e.employee_code, "status": "HOLIDAY"})
             continue
         status = "PRESENT"
         for c in containers:
@@ -281,6 +299,8 @@ def reconcile(employees: list[Employee], d: date, *, user=None, request=None) ->
         if key:
             out[key] += 1
         out["rows"].append({"employee_code": e.employee_code, "status": status})
+    if on_holiday:
+        out["holiday_segments"] = generate_segments(on_holiday, d, d, user=user, audit=False)
     record("adh_attendance_reconciled", Category.WFM,
            f"Asistencia del {fmt(d)} conciliada: {out['lateness']} lateness y {out['absences']} ausencias nuevas "
            f"({len(employees)} agentes; {out['on_leave']} con permiso, {out['inactive']} inactivos separados).",

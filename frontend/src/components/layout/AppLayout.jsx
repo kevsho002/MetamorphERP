@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext.jsx";
 import { AgentPresenceProvider } from "../../modules/acd/AgentPresenceContext.jsx";
 import AnnouncementBar from "./AnnouncementBar.jsx";
 import SessionWatcher from "./SessionWatcher.jsx";
+import TimeFormatSelect from "./TimeFormatSelect.jsx";
 import Sidebar, { useSidebarPin } from "./Sidebar.jsx";
 import UserPresenceMenu from "./UserPresenceMenu.jsx";
 
@@ -38,6 +39,7 @@ export default function AppLayout({ modules }) {
             ☰
           </button>
           <span className="topbar__brand">Metamorph ERP</span>
+          <TimeFormatSelect />
           <UserPresenceMenu />
         </header>
 

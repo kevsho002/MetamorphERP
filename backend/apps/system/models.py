@@ -146,6 +146,7 @@ class AuditEvent(models.Model):
         ACD = "ACD", "Estados y auxiliares ACD"
         WFM = "WFM", "Segmentos y adherencia (WFM)"
         SYSTEM = "SYSTEM", "Parámetros del sistema"
+        PAYROLL = "PAYROLL", "Planillas y boletas de pago"
 
     occurred_at = models.DateTimeField("fecha y hora", default=timezone.now, db_index=True)
     category = models.CharField("categoría", max_length=10, choices=Category)

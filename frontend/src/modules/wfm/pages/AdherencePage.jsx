@@ -1,3 +1,4 @@
+import { useTimeFormat } from "../../../app/timeFormat.js";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { todayIso } from "../../hcm/lib/format.js";
@@ -26,6 +27,7 @@ const tone = (pct) => (pct === null || pct === undefined ? "" : pct >= 90 ? "adh
  * (Out of Adherence y Unpaid Excess Login). «Guardar resultados» deja el cálculo para nómina y calidad.
  */
 export default function AdherencePage() {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const [params, setParams] = useSearchParams();
   const today = todayIso();
   const filters = useMemo(

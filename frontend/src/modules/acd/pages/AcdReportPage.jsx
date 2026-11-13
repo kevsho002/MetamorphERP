@@ -1,8 +1,9 @@
+import { formatSeconds, useTimeFormat } from "../../../app/timeFormat.js";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Pagination from "../../../components/ui/Pagination.jsx";
 import { todayIso } from "../../hcm/lib/format.js";
-import { acdApi, fmtDuration } from "../api.js";
+import { acdApi } from "../api.js";
 
 const PAGE_SIZE = 100;
 
@@ -12,6 +13,7 @@ const PAGE_SIZE = 100;
  * Secondary Status y Duration (milisegundos). Cada segmento se recorta a cada intervalo que toca.
  */
 export default function AcdReportPage() {
+  useTimeFormat(); // Fase 21: re-render al cambiar HH:MM:SS / horas decimales
   const [params, setParams] = useSearchParams();
   const today = todayIso();
   const filters = useMemo(
@@ -149,10 +151,10 @@ export default function AcdReportPage() {
                     <th scope="row">
                       {s.full_name} <code className="small">{s.employee_code}</code>
                     </th>
-                    <td>{fmtDuration(s.total_ms)}</td>
+                    <td>{formatSeconds((s.total_ms ?? 0) / 1000)}</td>
                     <td className="small">
                       {Object.entries(s.by_status_ms)
-                        .map(([k, v]) => `${k} ${fmtDuration(v)}`)
+                        .map(([k, v]) => `${k} ${formatSeconds((v ?? 0) / 1000)}`)
                         .join(" · ")}
                     </td>
                   </tr>
