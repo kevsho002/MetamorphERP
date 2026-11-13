@@ -12,7 +12,7 @@ from django.contrib import admin
 from django.db.models import Count
 
 from apps.general_ids.models import GeneralIdTypeBrand, GeneralIdTypeClient, ScopeLevel
-from apps.operations.models import Brand, Client, LineOfBusiness, SubLineOfBusiness
+from apps.operations.models import Brand, Client, LineOfBusiness, OperationalLeader, SubLineOfBusiness
 from apps.system.audit import Category, record
 
 
@@ -154,3 +154,28 @@ class SubLineOfBusinessAdmin(_CatalogAdmin):
     list_select_related = ("line", "country")
     autocomplete_fields = ("line",)
     fields = ("line", "code", "name", "country", "description", "is_active", "roster_item", "created_at", "updated_at")
+
+
+@admin.register(OperationalLeader)
+class OperationalLeaderAdmin(admin.ModelAdmin):
+    """Jerarquía operativa (Fase 17). El alta habitual es desde WFM › Jerarquía operativa (busca por ID corporativo)."""
+
+    list_display = ("employee", "level", "reports_to", "client", "is_active")
+    list_filter = ("level", "is_active", "client")
+    search_fields = ("employee__employee_code", "employee__first_name", "employee__last_name")
+    list_select_related = ("employee", "reports_to__employee", "client")
+    readonly_fields = ("roster_item", "created_at", "updated_at")
+    raw_id_fields = ("employee",)
+    autocomplete_fields = ("reports_to", "client")
+
+    def get_readonly_fields(self, request, obj=None):
+        return (*self.readonly_fields, "employee", "level") if obj else self.readonly_fields
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        record("ops_leader_updated" if change else "ops_leader_created", Category.CATALOGS,
+               f"{obj.get_level_display()} {obj.employee.full_name} {'modificado' if change else 'registrado'} desde /admin/.",
+               request=request, target=obj.employee, details={"fields": form.changed_data})

@@ -127,7 +127,7 @@ button.timeline__block:focus-visible {
   color: var(--color-text);
 }
 
-/* ------------------------------------------------------------- planificador -- */
+/* ------------------------------------------------------- leyenda y edición -- */
 .adh-legend {
   display: flex;
   flex-wrap: wrap;
@@ -153,42 +153,7 @@ button.timeline__block:focus-visible {
   gap: var(--space-3);
 }
 
-.planner {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.planner__row {
-  display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-  gap: var(--space-2) var(--space-3);
-  align-items: center;
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.planner__who {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.planner__who > div {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.planner__who strong {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.planner__warnings,
-.planner__row > .adh-edit {
+.adh-edit {
   grid-column: 2;
   margin: 0;
 }
@@ -285,16 +250,6 @@ button.timeline__block:focus-visible {
   min-width: 0;
 }
 
-@media (max-width: 760px) {
-  .planner__row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .planner__warnings,
-  .planner__row > .adh-edit {
-    grid-column: 1;
-  }
-}
 
 .adh-kpis {
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
@@ -303,4 +258,1544 @@ button.timeline__block:focus-visible {
 .adh-kpis dd {
   font-size: 1.3rem;
   white-space: nowrap;
+}
+
+.adh-icon-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #fff;
+  vertical-align: middle;
+}
+
+.adh-icon-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.adh-icon-pick select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ======================================================= Fase 17: planificación estilo IEX == */
+.iex {
+  --iex-who-w: 220px;
+  --iex-metric-w: 76px;
+  --iex-container: #cfd6df;
+  --iex-container-line: #bcc5d0;
+  --iex-container-text: #3b4757;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.iex__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.iex__head .page-subtitle {
+  margin-bottom: 0;
+}
+
+.iex__views {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+}
+
+.iex__tab {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.iex__tab.is-active {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.iex__tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Barra superior fija: fecha, cuadros de segmentos (arrastrables) y opciones de vista. */
+.iex__toolbar {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgb(15 30 50 / 0.08);
+}
+
+.iex__date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.iex__date input {
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+/* Fase 18: tira horizontal continua de cuadrados (solo icono) sin barra nativa; flechas laterales para desplazar. */
+.iex-strip {
+  display: flex;
+  flex: 1 1 260px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.iex-strip__arrow {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.iex-strip__arrow:hover:not(:disabled),
+.iex-strip__arrow:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.iex-strip__arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.iex-strip__viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* sin barra nativa: se desplaza con las flechas o la rueda */
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+}
+
+.iex-strip__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sombra en el borde con contenido oculto. */
+.iex-strip__viewport.has-left {
+  mask-image: linear-gradient(to right, transparent 0, #000 18px);
+}
+
+.iex-strip__viewport.has-right {
+  mask-image: linear-gradient(to left, transparent 0, #000 18px);
+}
+
+.iex-strip__viewport.has-left.has-right {
+  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+}
+
+.iex-strip__list {
+  display: flex;
+  gap: 4px;
+  width: max-content;
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+}
+
+.iex-tool {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--tool-color) 70%, #000);
+  border-radius: 6px;
+  background: var(--tool-color);
+  color: #fff;
+  cursor: grab;
+  user-select: none;
+}
+
+.iex-tool:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.iex-tool:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.iex-tool:hover:not(:disabled),
+.iex-tool:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--tool-color);
+  outline: none;
+}
+
+.iex-tool.is-armed {
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-text);
+}
+
+.iex-tooltip {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 220px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  transform: translateX(-50%);
+  box-shadow: 0 6px 16px rgb(15 30 50 / 0.25);
+  pointer-events: none;
+}
+
+.iex-tooltip span {
+  color: #cbd5e1;
+}
+
+.iex__view-opts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.iex__opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.iex__opt select {
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.iex__armed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: calc(var(--space-2) * -1) 0 0;
+  padding: 6px var(--space-3);
+  border-radius: 8px;
+  background: var(--color-info-bg);
+  color: var(--color-info-fg);
+  font-size: 0.88rem;
+}
+
+.iex-settings {
+  position: relative;
+}
+
+.iex-settings__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(240px, calc(100vw - 32px));
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 10px 28px rgb(15 30 50 / 0.18);
+}
+
+.iex-settings__panel p {
+  margin: 0;
+}
+
+.iex__body {
+  --iex-filters-w: 250px;
+  --iex-filters-rail-w: 52px;
+  display: grid;
+  grid-template-columns: var(--iex-filters-w) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.iex__body--filters-collapsed {
+  grid-template-columns: var(--iex-filters-rail-w) minmax(0, 1fr);
+}
+
+.iex__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.iex__main > * {
+  margin: 0;
+}
+
+/* Panel izquierdo de filtros (Fase 18): igual que el menú de módulos — fijo, o contraído a una barra de íconos que
+   se despliega SOBRE la grilla con hover / foco sin moverla. */
+.iex-filters {
+  position: sticky;
+  top: calc(var(--topbar-h) + 84px);
+  z-index: 8;
+  min-width: 0;
+}
+
+.iex-filters__panel {
+  width: 100%;
+  max-height: calc(100dvh - var(--topbar-h) - 100px);
+  padding: var(--space-2);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  transition: width 0.2s ease, box-shadow 0.2s ease;
+}
+
+.iex-filters--peek .iex-filters__panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--iex-filters-w);
+  box-shadow: 6px 0 24px rgb(15 30 50 / 0.16);
+}
+
+.iex-filters__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+}
+
+.iex-filters .sidebar__pin {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.iex-filters .sidebar__pin:hover,
+.iex-filters .sidebar__pin:focus-visible {
+  background: var(--color-bg);
+  color: var(--color-primary);
+  border-color: var(--color-border);
+}
+
+.iex-filters .sidebar__pin.is-pinned {
+  color: var(--color-primary);
+}
+
+.iex-filters__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.iex-filters__rail {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.iex-filters__rail-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.iex-filters__rail-btn:hover,
+.iex-filters__rail-btn:focus-visible {
+  background: var(--color-bg);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.iex-filters__rail-btn.is-on {
+  background: var(--color-info-bg);
+  color: var(--color-primary);
+}
+
+.iex-filters__rail-btn.is-on::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent, var(--color-primary));
+}
+
+.iex-filters--collapsed .iex-filters__title,
+.iex-filters--collapsed .iex-filters__content {
+  display: none;
+}
+
+.iex-filters--collapsed .iex-filters__rail {
+  display: flex;
+}
+
+.iex-filters__content {
+  padding: 0 var(--space-1);
+}
+
+.iex-filters__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.iex-filters__heading {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.iex-filters__section p {
+  margin: 0;
+}
+
+.iex-filters__clear {
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.iex-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.iex-kpis dd {
+  font-size: 1.25rem;
+  white-space: nowrap;
+}
+
+/* Grilla (Gantt): columna del agente y de adherencia fijas; la línea de tiempo desplaza en horizontal. */
+.gantt {
+  overflow: auto;
+  max-height: calc(100dvh - var(--topbar-h) - 160px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.gantt__row {
+  display: grid;
+  grid-template-columns: var(--iex-who-w) max-content minmax(var(--iex-metric-w), 1fr);
+  width: max-content;
+  min-width: 100%;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gantt__row:last-child {
+  border-bottom: 0;
+}
+
+.gantt__row--head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+.gantt__row--head > * {
+  background-color: var(--color-bg);
+}
+
+.gantt__who {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 6px var(--space-2);
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.gantt__row--head .gantt__who,
+.gantt__row--head .gantt__metric {
+  align-items: flex-end;
+  padding-bottom: 6px;
+}
+
+.gantt__row.is-today > * {
+  background-color: color-mix(in srgb, var(--color-info-bg) 70%, var(--color-surface));
+}
+
+.gantt__who-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.gantt__who-text > * {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gantt__name {
+  padding: 0;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* Fase 18: la cabecera de la fila abre el audit trail de la línea (agente + fecha). */
+.gantt__who--select {
+  cursor: pointer;
+}
+
+.gantt__who--select:hover {
+  background-color: color-mix(in srgb, var(--color-info-bg) 55%, var(--color-surface));
+}
+
+.gantt__who-text {
+  flex: 1 1 auto;
+}
+
+.gantt__audit {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.gantt__audit:hover,
+.gantt__audit:focus-visible {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.gantt__row.is-audited > * {
+  background-color: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface));
+}
+
+.gantt__row.is-audited > .gantt__who {
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.gantt__warn {
+  font-size: 0.72rem;
+  color: var(--color-warn-fg);
+}
+
+.gantt__metric {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--space-2);
+  border-left: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gantt__scale {
+  position: relative;
+  height: 32px;
+}
+
+.gantt__tick {
+  position: absolute;
+  bottom: 0;
+  height: 6px;
+  border-left: 1px solid var(--color-border);
+}
+
+.gantt__tick--hour {
+  height: 12px;
+  border-left-color: var(--color-muted);
+}
+
+.gantt__tick-label {
+  position: absolute;
+  bottom: 13px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.gantt__tick--first .gantt__tick-label {
+  transform: translateX(2px);
+}
+
+.gantt__tick-minor {
+  position: absolute;
+  bottom: 7px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+/* Pista: franjas por intervalo (finas) y por hora (gruesas). */
+.gantt__track {
+  position: relative;
+  height: 48px;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-muted) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--color-border) 90%, transparent) 1px, transparent 1px);
+  background-size: var(--hour-px) 100%, var(--interval-px) 100%;
+  background-position: var(--offset-px) 0, 0 0;
+}
+
+.gantt__row.is-rest .gantt__track {
+  background-color: color-mix(in srgb, var(--color-bg) 70%, var(--color-surface));
+}
+
+.gantt__track--armed {
+  cursor: copy;
+}
+
+/* Pre-contenedor (turno de la AP): base gris con las franjas del intervalo. */
+.gantt__container {
+  position: absolute;
+  top: 4px;
+  height: 30px;
+  border: 1px solid #aeb8c4;
+  border-radius: 5px;
+  background: repeating-linear-gradient(90deg, var(--iex-container) 0 calc(var(--interval-px) - 1px),
+    var(--iex-container-line) calc(var(--interval-px) - 1px) var(--interval-px));
+}
+
+.gantt__container-label {
+  position: absolute;
+  inset: 1px 6px auto;
+  overflow: hidden;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  color: var(--iex-container-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.gantt__justified {
+  position: absolute;
+  top: 4px;
+  height: 30px;
+  background: repeating-linear-gradient(135deg, rgb(100 116 139 / 0.45) 0 5px, transparent 5px 10px);
+  pointer-events: none;
+}
+
+/* Fase 18: el segmento es una LÍNEA DELGADA dentro del pre-contenedor con el icono repetido cada 15 minutos. */
+.gantt__seg {
+  position: absolute;
+  top: 19px;
+  z-index: 2;
+  height: 13px;
+  min-width: 3px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 3px;
+  background: var(--seg-color);
+  color: #fff;
+  box-shadow: 0 1px 2px rgb(15 30 50 / 0.3);
+  cursor: grab;
+}
+
+.gantt__seg[draggable="false"] {
+  cursor: pointer;
+}
+
+.gantt__seg:hover,
+.gantt__seg:focus-visible,
+.gantt__seg.is-selected {
+  z-index: 3;
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
+}
+
+.gantt__seg-pattern {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Un icono por cada bloque de 15 min, alineado al inicio del bloque; el borde marca el cambio de bloque. */
+.gantt__seg-mark {
+  position: absolute;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-left: 1px solid rgb(255 255 255 / 0.35);
+}
+
+.gantt__seg-mark:first-child {
+  border-left: 0;
+}
+
+.gantt__seg .activity-icon {
+  flex: none;
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.35));
+}
+
+.gantt__ghost {
+  position: absolute;
+  top: 4px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 2px dashed var(--seg-color);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--seg-color) 30%, transparent);
+  color: var(--color-text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gantt__actual {
+  position: absolute;
+  top: 37px;
+  height: 5px;
+  border-radius: 2px;
+}
+
+.gantt__dev {
+  position: absolute;
+  bottom: 1px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.gantt__dev--ooa {
+  background: var(--color-danger);
+}
+
+.gantt__dev--excess {
+  background: #7c3aed;
+}
+
+.gantt-legend {
+  margin: 0;
+}
+
+.gantt-legend__box {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+
+.gantt-legend__box--container {
+  border: 1px solid #aeb8c4;
+  background: var(--iex-container);
+}
+
+.gantt-legend__box--segment {
+  height: 7px;
+  background: repeating-linear-gradient(90deg, #2f6fb8 0 9px, #8db4e2 9px 10px);
+}
+
+.gantt-legend__box--actual {
+  height: 5px;
+  background: linear-gradient(90deg, #0284c7 0 50%, #d97706 50%);
+}
+
+.gantt-legend__box--ooa {
+  height: 4px;
+  background: var(--color-danger);
+}
+
+.gantt-legend__box--excess {
+  height: 4px;
+  background: #7c3aed;
+}
+
+.gantt-legend__box--justified {
+  background: repeating-linear-gradient(135deg, rgb(100 116 139 / 0.8) 0 3px, transparent 3px 6px);
+}
+
+.iex-bulk > summary {
+  cursor: pointer;
+}
+
+.iex-bulk form {
+  margin-top: var(--space-3);
+}
+
+/* Vista del agente */
+.iex-agent {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.iex-agent__name {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.iex-agent p {
+  margin: 2px 0 0;
+}
+
+.iex-agent__chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-3);
+}
+
+.iex-agent .iex-kpis {
+  flex: 0 1 340px;
+  margin: 0;
+}
+
+.iex-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.gantt--history {
+  --iex-who-w: 150px;
+}
+
+/* Jerarquía operativa (árbol) */
+.org,
+.org__children {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.org {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.org__children {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 2px solid var(--color-border);
+}
+
+.org__node {
+  margin-top: var(--space-2);
+}
+
+.org__node.is-inactive > .org__card {
+  opacity: 0.6;
+}
+
+.org__node.is-focus > .org__card {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.org__card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.org__level {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.org__level--ops_manager {
+  background: #2f6fb8;
+}
+
+.org__level--account_supervisor {
+  background: #0f766e;
+}
+
+.org__level--team_manager {
+  background: #6d3fc7;
+}
+
+.org__edit {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+@media (max-width: 1100px) {
+  .iex__body,
+  .iex__body--filters-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Pantalla angosta: el panel va arriba; contraído muestra solo su cabecera (botón + «Filtros»). */
+  .iex-filters {
+    position: static;
+  }
+
+  .iex-filters__panel,
+  .iex-filters--peek .iex-filters__panel {
+    position: static;
+    width: 100%;
+    max-height: none;
+    box-shadow: none;
+  }
+
+  .iex-filters--collapsed .iex-filters__title {
+    display: flex;
+  }
+
+  .iex-filters--collapsed .iex-filters__rail {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .iex {
+    --iex-who-w: 128px;
+    --iex-metric-w: 64px;
+  }
+
+  .iex__toolbar,
+  .iex-editor {
+    position: static;
+  }
+
+  .iex__view-opts {
+    margin-left: 0;
+  }
+
+  .gantt--history {
+    --iex-who-w: 112px;
+  }
+}
+
+/* ---------------------------------------------------------------- Fase 18: Audit Trail (panel lateral) -- */
+.audit-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(15 23 42 / 0.28);
+}
+
+.audit-drawer__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100vw);
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: -10px 0 30px rgb(15 30 50 / 0.2);
+  outline: none;
+  animation: audit-in 0.18s ease-out;
+}
+
+@keyframes audit-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-drawer__panel {
+    animation: none;
+  }
+}
+
+.audit-drawer__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.audit-drawer__head p {
+  margin: 0;
+}
+
+.audit-drawer__eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.audit-drawer__title {
+  margin: 2px 0;
+  font-size: 1.1rem;
+}
+
+.audit-drawer__close {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.audit-drawer__close:hover,
+.audit-drawer__close:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.audit-drawer__pad {
+  margin: var(--space-3);
+}
+
+.audit-drawer__body {
+  flex: 1 1 auto;
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.audit-drawer__chain {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2);
+  border-radius: 8px;
+  background: var(--color-bg);
+}
+
+.audit-drawer__chain dt {
+  font-size: 0.68rem;
+  color: var(--color-muted);
+}
+
+.audit-drawer__chain dd {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.audit-drawer__now {
+  margin: 0 0 var(--space-3);
+}
+
+.audit-drawer__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--space-3);
+}
+
+.audit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.audit-chip.is-on {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.audit-chip__count {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.audit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audit-list__item {
+  position: relative;
+  padding: 0 0 var(--space-3) 18px;
+  border-left: 2px solid var(--color-border);
+}
+
+.audit-list__item:last-child {
+  padding-bottom: 0;
+}
+
+.audit-list__item::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--audit-dot, var(--color-muted));
+}
+
+.audit-list__item--change {
+  --audit-dot: #2f6fb8;
+}
+
+.audit-list__item--approval {
+  --audit-dot: #0f766e;
+}
+
+.audit-list__item--action {
+  --audit-dot: #b45309;
+}
+
+.audit-list__item--system {
+  --audit-dot: #6d3fc7;
+}
+
+.audit-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  font-size: 0.75rem;
+}
+
+.audit-list__meta time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+
+.audit-kind {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--audit-dot, var(--color-muted));
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.audit-list__title {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+
+.audit-list__summary,
+.audit-list__actor {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.audit-diff {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  border-radius: 6px;
+  background: var(--color-bg);
+}
+
+.audit-diff dt {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.audit-diff dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .audit-diff,
+  .audit-drawer__chain {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ==========================================================================
+   Fase 19 — categorías en la barra, Lateness / ausencia bloqueados, ventana flotante del día y cola de WFM
+   ========================================================================== */
+.iex-strip__category {
+  flex: 0 1 220px;
+  min-width: 140px;
+}
+
+.iex-strip__category select {
+  width: 100%;
+  height: 32px;
+  padding: 0 6px;
+  font-size: 0.8rem;
+}
+
+.iex-tool.needs-ap {
+  position: relative; /* punto rojo: la actividad exige AP aprobada */
+}
+
+.iex-tool.needs-ap::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: var(--color-danger);
+}
+
+.gantt__container.is-clickable {
+  cursor: pointer;
+}
+
+.gantt__container.is-clickable:hover,
+.gantt__container.is-clickable:focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(47 125 209 / 0.25);
+}
+
+.gantt__seg.is-locked {
+  background: repeating-linear-gradient(135deg, var(--seg-color) 0 5px, rgb(255 255 255 / 0.35) 5px 7px), var(--seg-color);
+  box-shadow: 0 0 0 1px var(--seg-color), 0 1px 2px rgb(15 30 50 / 0.3);
+  cursor: pointer;
+}
+
+.gantt-legend__box--locked {
+  background: repeating-linear-gradient(135deg, #dc2626 0 4px, #fca5a5 4px 6px);
+}
+
+.gantt__att {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 0.65rem;
+}
+
+.adh-flag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Ventana flotante (modal) del día */
+.act-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: rgb(15 23 42 / 0.35);
+}
+
+.act-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(980px, 100%);
+  max-height: calc(100vh - 2 * var(--space-3));
+  padding: var(--space-3);
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 20px 50px rgb(15 30 50 / 0.3);
+  outline: none;
+  animation: act-modal-in 0.16s ease-out;
+}
+
+@keyframes act-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.act-modal__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.act-modal__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.act-modal__head p {
+  margin: 0;
+}
+
+.act-modal__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.act-modal__close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.act-modal__close:hover {
+  color: var(--color-text);
+}
+
+.act-modal > * {
+  flex-shrink: 0; /* un solo desplazamiento: el de la ventana */
+}
+
+.act-modal__table-wrap {
+  margin: 0;
+}
+
+.act-modal textarea {
+  font: inherit;
+}
+
+.act-modal__table th,
+.act-modal__table td {
+  padding: 6px 10px;
+  vertical-align: top;
+}
+
+.act-modal__table td:first-child {
+  min-width: 200px;
+  white-space: normal;
+}
+
+.act-modal__table td:nth-child(2) {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.act-modal__table td:nth-child(5),
+.act-modal__table td:nth-child(6) {
+  min-width: 110px;
+  white-space: normal;
+}
+
+.act-modal__table tr.is-container td {
+  background: var(--color-bg);
+  color: var(--color-muted);
+}
+
+.act-modal__table tr.is-focus td {
+  background: var(--color-info-bg);
+  box-shadow: inset 0 1px 0 var(--color-accent), inset 0 -1px 0 var(--color-accent);
+}
+
+.act-modal__lock {
+  display: inline-flex;
+  vertical-align: -2px;
+  color: var(--color-danger);
+}
+
+.act-modal__row-actions {
+  white-space: nowrap;
+}
+
+.act-modal__row-actions .link-button + .link-button {
+  margin-left: var(--space-2);
+}
+
+.act-modal__danger {
+  color: var(--color-danger);
+}
+
+.act-modal__form,
+.act-modal__requests {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+.act-modal__form-title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.95rem;
+}
+
+.act-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.act-modal__wide {
+  grid-column: 1 / -1;
+}
+
+.act-modal__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.act-modal__request {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.queue-decide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.queue-decide input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .act-modal__backdrop {
+    padding: 0;
+    place-items: stretch;
+  }
+
+  .act-modal {
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .iex-strip__category {
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .act-modal {
+    animation: none;
+  }
 }

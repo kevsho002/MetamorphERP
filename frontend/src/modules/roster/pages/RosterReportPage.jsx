@@ -4,7 +4,7 @@ import Pagination from "../../../components/ui/Pagination.jsx";
 import StatusBadge from "../../hcm/components/StatusBadge.jsx";
 import { useCatalogs } from "../../hcm/hooks/useCatalogs.js";
 import { formatDate, todayIso } from "../../hcm/lib/format.js";
-import { rosterApi } from "../api.js";
+import { CHAIN_LEVELS, leadersApi, rosterApi } from "../api.js";
 import { useRosterConfig } from "../hooks/useRosterConfig.js";
 
 const PAGE_SIZE = 50;
@@ -51,12 +51,45 @@ export default function RosterReportPage() {
       value: params.get("value") ?? "",
       search: params.get("search") ?? "",
       assigned: params.get("assigned") ?? "",
+      director: params.get("director") ?? "",
+      manager: params.get("manager") ?? "",
+      supervisor: params.get("supervisor") ?? "",
+      team_manager: params.get("team_manager") ?? "",
       page: Number(params.get("page") ?? 1) || 1,
     }),
     [params, today],
   );
   const [searchText, setSearchText] = useState(filters.search);
   const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [leaders, setLeaders] = useState([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    leadersApi
+      .list({}, { signal: controller.signal })
+      .then((d) => setLeaders(d.results))
+      .catch(() => setLeaders([]));
+    return () => controller.abort();
+  }, []);
+
+  // Cadena de mando encadenada (Fase 18): cada nivel solo ofrece los líderes bajo el nivel superior elegido.
+  const chainOptions = useMemo(() => {
+    const out = {};
+    let parents = null;
+    CHAIN_LEVELS.forEach(([param, level]) => {
+      const list = leaders.filter((l) => l.level === level && (parents === null || parents.has(l.reports_to_id)));
+      out[param] = list;
+      const chosen = list.find((l) => l.employee_code === filters[param]);
+      parents = chosen ? new Set([chosen.id]) : parents === null ? null : new Set(list.map((l) => l.id));
+    });
+    return out;
+  }, [leaders, filters]);
+  const setLevel = (param, value) => {
+    const idx = CHAIN_LEVELS.findIndex(([p]) => p === param);
+    const changes = { [param]: value };
+    CHAIN_LEVELS.slice(idx + 1).forEach(([p]) => { changes[p] = ""; });
+    update(changes);
+  };
 
   const update = (changes) => {
     const next = { ...filters, page: 1, ...changes };
@@ -164,6 +197,20 @@ export default function RosterReportPage() {
           <span className="field__label">Buscar</span>
           <input type="search" placeholder="Nombre o ID corporativo" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
         </label>
+        {leaders.length > 0 &&
+          CHAIN_LEVELS.map(([param, , label]) => (
+            <label key={param} className="field">
+              <span className="field__label">{label}</span>
+              <select value={filters[param]} onChange={(e) => setLevel(param, e.target.value)} disabled={chainOptions[param].length === 0 && !filters[param]}>
+                <option value="">Todos</option>
+                {chainOptions[param].map((l) => (
+                  <option key={l.id} value={l.employee_code}>
+                    {l.full_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
         <label className="checkbox roster-filter-check">
           <input type="checkbox" checked={filters.assigned === "1"} onChange={(e) => update({ assigned: e.target.checked ? "1" : "" })} />
           <span>Solo con asignaciones en el rango</span>
@@ -179,6 +226,7 @@ export default function RosterReportPage() {
               <th scope="col">Empleado</th>
               <th scope="col">País</th>
               <th scope="col">Estado</th>
+              <th scope="col">Cadena de mando al {formatDate(filters.to)}</th>
               {columns.map((a) => (
                 <th key={a.code} scope="col">
                   {a.name}
@@ -187,7 +235,7 @@ export default function RosterReportPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ employee: e, assignments }) => (
+            {rows.map(({ employee: e, assignments, chain_of_command: chain }) => (
               <tr key={e.employee_code}>
                 <td>
                   <strong>{e.full_name}</strong>
@@ -200,6 +248,22 @@ export default function RosterReportPage() {
                 <td>
                   <StatusBadge value={e.employment_status} label={e.employment_status_label} />
                 </td>
+                <td>
+                  {chain ? (
+                    <ul className="roster-cell">
+                      {CHAIN_LEVELS.slice().reverse().map(([, level, label]) =>
+                        chain[level] ? (
+                          <li key={level}>
+                            <span className="muted small">{label}: </span>
+                            <strong>{chain[level].full_name}</strong>
+                          </li>
+                        ) : null,
+                      )}
+                    </ul>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
                 {columns.map((a) => (
                   <td key={a.code}>
                     <Cell intervals={assignments[a.code]} />
@@ -209,7 +273,7 @@ export default function RosterReportPage() {
             ))}
             {!state.loading && rows.length === 0 && (
               <tr>
-                <td colSpan={3 + columns.length} className="empty">
+                <td colSpan={4 + columns.length} className="empty">
                   No hay empleados vigentes con estos filtros entre el {formatDate(filters.from)} y el {formatDate(filters.to)}.
                 </td>
               </tr>

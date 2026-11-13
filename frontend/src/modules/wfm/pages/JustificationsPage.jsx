@@ -82,11 +82,11 @@ export default function JustificationsPage() {
             </label>
             <label className="field">
               <span className="field__label">Desde</span>
-              <input type="datetime-local" required value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} />
+              <input type="datetime-local" step="1" required value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">Hasta</span>
-              <input type="datetime-local" required min={form.start} value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} />
+              <input type="datetime-local" step="1" required min={form.start} value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">Motivo</span>

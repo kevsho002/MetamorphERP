@@ -35,7 +35,10 @@ ATTRIBUTE_CODE = RegexValidator(r"^[a-z][a-z0-9_]*$", "Use minúsculas, dígitos
 # Fase 7: estas dimensiones las alimentan las tablas de catálogo de apps.operations (ops_client,
 # ops_brand, ops_line_of_business, ops_sub_line_of_business); sus elementos no se editan desde el roster.
 CATALOG_DIMENSIONS = {"CLIENT": "Clientes", "BRAND": "Marcas (brands)", "LOB": "Líneas de negocio (LOB)",
-                      "SUB_LOB": "Sub-líneas de negocio"}
+                      "SUB_LOB": "Sub-líneas de negocio",
+                      # Fase 17: jerarquía operativa (ops_leader)
+                      "OPS_DIRECTOR": "Operations Directors", "OPS_MANAGER": "Operations Managers",
+                      "ACCOUNT_SUPERVISOR": "Account Supervisors", "TEAM_MANAGER": "Team Managers"}
 
 
 class RosterDimension(models.Model):

@@ -16,7 +16,8 @@ Cada instante se clasifica así:
                                 (salvo que esté justificado). Dentro del contenedor el tiempo en estado pagado es válido
                                 para pago; para facturación (billing) además debe estar en adherencia y la actividad ser
                                 facturable.
-    sí    no    no              OUT OF ADHERENCE (programado y sin sesión)
+    sí    no    no              OUT OF ADHERENCE (programado y sin sesión), salvo actividades que no exigen sesión
+                                (Fase 19: permisos RRHH, fallas de sistema, Legal Benefit Lunch): EN ADHERENCIA
     no    sí    no              UNPAID EXCESS LOGIN (sesión fuera de los contenedores): no se paga
     —     —     sí              JUSTIFICADO: no penaliza; se paga si la justificación es pagada
 
@@ -50,6 +51,7 @@ class Activity:
     is_paid: bool = True
     is_billable: bool = False
     rules: tuple[StatusRule, ...] = ()
+    requires_login: bool = True  # Fase 19: False = se cumple sin sesión (permiso, falla de sistema, almuerzo legal)
 
     def match(self, state: Actual) -> str | None:
         """Rol con el que el estado real cumple la actividad (la regla con auxiliar gana a la genérica), o None."""
@@ -154,8 +156,8 @@ class DayTotals:
 
     def as_dict(self) -> dict:
         out = {k: getattr(self, k) for k in (
-            "scheduled", "scheduled_paid", "in_adherence", "out_of_adherence", "justified", "logged", "logged_in_container",
-            "paid_valid", "billable", "primary_work", "secondary_paid", "unpaid_excess")}
+            "scheduled", "scheduled_paid", "in_adherence", "out_of_adherence", "justified", "justified_scheduled", "logged",
+            "logged_in_container", "paid_valid", "billable", "primary_work", "secondary_paid", "unpaid_excess")}
         return {"date": self.day.isoformat(), **out, "adherence_pct": self.adherence_pct, "conformance_pct": self.conformance_pct}
 
 
@@ -280,7 +282,15 @@ def evaluate(plan: list[PlanBlock], actuals: list[Actual], justifications: list[
             if state is not None:
                 t.logged += secs
                 t.logged_in_container += secs
-            if role is not None:
+            if not activity.requires_login:
+                # Fase 19: actividad que no exige sesión ACD (permiso RRHH, falla de sistema, Legal Benefit Lunch):
+                # el tiempo se cumple con o sin sesión y se paga / factura según la actividad.
+                t.in_adherence += secs
+                if activity.is_paid or (state is not None and state.paid):
+                    t.paid_valid += secs
+                    if activity.is_billable:
+                        t.billable += secs
+            elif role is not None:
                 t.in_adherence += secs
                 paid = state.paid or role == SECONDARY_ROLE
                 if paid:

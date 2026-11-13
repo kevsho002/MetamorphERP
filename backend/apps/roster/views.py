@@ -6,11 +6,19 @@ GET  /roster/employees/{ID}/?as_of=&include=employee   roster vigente a una fech
 GET  /roster/employees/{ID}/history/?attribute=&include_superseded=1   intervalos (auditoría)
 POST /roster/employees/{ID}/changes/             registrar cambios con fecha efectiva
 POST /roster/employees/{ID}/changes/validate/    lo mismo sin guardar
-GET  /roster/report/?from=&to=&country=&attribute=&value=&export=csv   empleados + asignaciones en un rango
+GET  /roster/report/?from=&to=&country=&attribute=&value=&director=&manager=&supervisor=&team_manager=&export=csv
+                                                  empleados + asignaciones en un rango (+ cadena de mando vigente)
+
+Fase 18 — la cadena de mando se gestiona en el ROSTER (antes WFM › Jerarquía operativa):
+GET   /roster/hierarchy/leaders/?include_inactive=1&as_of=   líderes por nivel (Director → Manager → Supervisor → TM)
+POST  /roster/hierarchy/leaders/                             {level, employee_code, reports_to (id), client?}
+PATCH /roster/hierarchy/leaders/{id}/                        {reports_to?, client?, is_active?}
+El agente recibe su Team Manager como atributo temporal del roster («team_manager»); los niveles superiores se derivan.
 """
 
 import csv
 
+from django.db import DatabaseError
 from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -26,6 +34,8 @@ from apps.accounts.permissions import HasActionPermission, PasswordChangeNotRequ
 from apps.accounts.roles import Perm
 from apps.employees.serializers import EmployeeSerializer
 from apps.hcm.models import Employee
+from apps.operations import hierarchy
+from apps.operations.models import HIERARCHY_ORDER, Client, OperationalLeader
 from apps.roster import services
 from apps.roster.models import RosterAssignment, RosterAttribute, RosterDimension, RosterDimensionItem
 from apps.roster.serializers import RosterAttributeSerializer, RosterDimensionSerializer
@@ -94,6 +104,7 @@ class EmployeeRosterView(_RosterView):
             "as_of": on,
             "attributes": services.snapshot(employee, on),
             "can_manage": Perm.ROSTER_MANAGE in _perms(request),
+            "chain_of_command": hierarchy.chain_of_command(employee, on),
         }
         if "employee" in request.query_params.get("include", "").split(","):
             if Perm.HCM_VIEW not in _perms(request):
@@ -213,6 +224,11 @@ class RosterReportView(_RosterView):
             employees = employees.filter(Exists(matching))
         if params.get("assigned") in {"1", "true"}:
             employees = employees.filter(Exists(in_range.filter(employee=OuterRef("pk"))))
+        # Fase 18: la cadena de mando del roster filtra igual que en WFM (manda el nivel más bajo elegido).
+        for param in ("team_manager", "supervisor", "manager", "director"):
+            if code := params.get(param, "").strip():
+                employees = employees.filter(pk__in=list(hierarchy.employees_under(hierarchy.FILTER_PARAMS[param], code, end)))
+                break
 
         attributes = services.active_attributes()
         if params.get("export") == "csv":  # «format» lo reserva DRF
@@ -230,8 +246,10 @@ class RosterReportView(_RosterView):
             by_employee.setdefault(row.employee_id, {}).setdefault(row.attribute.code, []).append(
                 {k: v for k, v in services.interval_payload(row).items() if k in {"value", "label", "effective_start", "effective_end", "is_now"}}
             )
+        chains = hierarchy.agent_hierarchy([e.pk for e in page], end)
         results = [
             {
+                "chain_of_command": chains.get(e.pk),
                 "employee": {
                     "employee_code": e.employee_code,
                     "full_name": e.full_name,
@@ -249,6 +267,7 @@ class RosterReportView(_RosterView):
         response = paginator.get_paginated_response(results)
         response.data["range"] = {"from": start, "to": end}
         response.data["attributes"] = RosterAttributeSerializer(attributes, many=True).data
+        response.data["levels"] = [{"value": lvl.value, "label": lvl.label} for lvl in HIERARCHY_ORDER]
         return response
 
     def _csv(self, employees, in_range, attributes, start, end):
@@ -276,3 +295,48 @@ class RosterReportView(_RosterView):
             ])
         return response
 
+
+# ==================================================================== Fase 18: cadena de mando (en el roster)
+class _LeaderView(APIView):
+    permission_classes = PERMISSIONS
+    action_permissions = {"get": Perm.ROSTER_VIEW, "post": Perm.ROSTER_MANAGE, "patch": Perm.ROSTER_MANAGE}
+
+    @property
+    def action(self):
+        return self.request.method.lower()
+
+    def handle_exception(self, exc):
+        if isinstance(exc, hierarchy.HierarchyError):
+            return Response({"detail": str(exc), "errors": exc.errors, "code": "invalid"}, status=status.HTTP_400_BAD_REQUEST)
+        if isinstance(exc, DatabaseError) and "50080" in str(exc):
+            return Response({"detail": "SQL Server rechazó el cambio: cada líder reporta a un líder activo del nivel inmediato "
+                                       "superior y no se desactiva con subordinados activos.", "code": "sql_50080"},
+                            status=status.HTTP_409_CONFLICT)
+        return super().handle_exception(exc)
+
+
+class LeadersView(_LeaderView):
+    def get(self, request):
+        include_inactive = request.query_params.get("include_inactive") in {"1", "true"}
+        on = _date_param(request, "as_of", timezone.localdate())
+        counts = hierarchy.agent_counts(on)
+        return Response({
+            "as_of": on,
+            "levels": [{"value": lvl.value, "label": lvl.label, "parent": hierarchy.parent_level(lvl.value)} for lvl in HIERARCHY_ORDER],
+            "results": [hierarchy.leader_dict(x, counts.get(x.pk) if x.level == "TEAM_MANAGER" else None)
+                        for x in hierarchy.leaders(include_inactive=include_inactive)],
+            "clients": [{"code": c.code, "name": c.name} for c in Client.objects.filter(is_active=True).order_by("name")],
+            "can_manage": Perm.ROSTER_MANAGE in _perms(request),
+        }, headers=NO_STORE)
+
+    def post(self, request):
+        lead = hierarchy.save_leader(request.data if isinstance(request.data, dict) else {}, user=request.user, request=request)
+        return Response({"leader": hierarchy.leader_dict(lead), "feedback": f"{lead.get_level_display()} {lead.employee.full_name} registrado."},
+                        status=status.HTTP_201_CREATED)
+
+
+class LeaderDetailView(_LeaderView):
+    def patch(self, request, pk: int):
+        lead = get_object_or_404(OperationalLeader.objects.select_related("employee"), pk=pk)
+        lead = hierarchy.save_leader(request.data if isinstance(request.data, dict) else {}, leader=lead, user=request.user, request=request)
+        return Response({"leader": hierarchy.leader_dict(lead), "feedback": f"{lead.get_level_display()} {lead.employee.full_name} actualizado."})

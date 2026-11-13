@@ -3,6 +3,7 @@ import FeedbackPanel from "../../hcm/components/Feedback.jsx";
 import { formatDate, formatDateTime, todayIso } from "../../hcm/lib/format.js";
 import { rosterApi } from "../api.js";
 import { useRosterConfig } from "../hooks/useRosterConfig.js";
+import ChainOfCommandPanel from "./ChainOfCommandPanel.jsx";
 import RosterField from "./RosterField.jsx";
 
 const NOW = <span className="badge badge--ok">Now</span>;
@@ -202,6 +203,9 @@ export default function RosterPanel({ employee }) {
           )}
         </section>
       ))}
+
+      <ChainOfCommandPanel employee={employee} chain={state.data.chain_of_command} canManage={canManage}
+        onChanged={() => setReloadKey((k) => k + 1)} />
     </section>
   );
 }

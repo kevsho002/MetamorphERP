@@ -1,6 +1,8 @@
 """GET /operations/catalogs/ — clientes con sus marcas y líneas de negocio con sus sub-líneas (solo lectura).
 
 La creación y edición se hace en /admin/ › Catálogos operativos.
+
+La cadena de mando (Fase 17) se gestiona en el roster desde la Fase 18: /roster/hierarchy/leaders/.
 """
 
 from django.db.models import Prefetch

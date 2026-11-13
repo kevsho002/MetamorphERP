@@ -157,3 +157,66 @@
 .account-search__item:focus-visible {
   color: var(--color-accent);
 }
+
+/* Fase 18: cadena de mando dentro del roster del colaborador */
+.roster-chain__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.roster-chain__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-3);
+}
+
+.roster-chain__sub {
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.roster-chain__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-chain__list li {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 6px var(--space-2);
+  border-left: 3px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.roster-chain__list li:first-child {
+  border-left-color: var(--color-primary);
+}
+
+.roster-chain__role {
+  margin-bottom: var(--space-2);
+}
+
+.roster-chain__role.is-inactive {
+  opacity: 0.6;
+}
+
+@media (max-width: 560px) {
+  .roster-chain__list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

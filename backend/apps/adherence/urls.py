@@ -18,4 +18,17 @@ urlpatterns = [
     path(f"{P}/report/", views.ReportView.as_view(), name="adh-report"),
     path(f"{P}/detail/", views.DetailView.as_view(), name="adh-detail"),
     path(f"{P}/compute/", views.ComputeView.as_view(), name="adh-compute"),
+    path(f"{P}/grid/", views.GridView.as_view(), name="adh-grid"),
+    path(f"{P}/grid/filters/", views.GridFiltersView.as_view(), name="adh-grid-filters"),
+    path(f"{P}/grid/agent/", views.AgentHistoryView.as_view(), name="adh-grid-agent"),
+    path(f"{P}/grid/audit/", views.AuditTrailView.as_view(), name="adh-grid-audit"),
+    path(f"{P}/grid/settings/", views.GridSettingView.as_view(), name="adh-grid-settings"),
+    # Fase 19
+    path(f"{P}/segments/<int:pk>/replace/", views.SegmentReplaceView.as_view(), name="adh-segment-replace"),
+    path(f"{P}/attendance/reconcile/", views.ReconcileView.as_view(), name="adh-attendance-reconcile"),
+    path(f"{P}/day/", views.DayView.as_view(), name="adh-day"),
+    path(f"{P}/requests/", views.RequestsView.as_view(), name="adh-requests"),
+    path(f"{P}/requests/<int:pk>/decide/", views.RequestDecideView.as_view(), name="adh-request-decide"),
+    path(f"{P}/requests/<int:pk>/cancel/", views.RequestCancelView.as_view(), name="adh-request-cancel"),
+    path(f"{P}/my-plan/", views.MyPlanView.as_view(), name="adh-my-plan"),
 ]

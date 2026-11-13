@@ -16,3 +16,18 @@ export const rosterApi = {
   report: (params, options) => api.get(`/roster/report/${toQuery(params)}`, options),
   reportCsvUrl: (params) => apiUrl(`/roster/report/${toQuery({ ...params, page: undefined, export: "csv" })}`),
 };
+
+/** Cadena de mando (Fase 18: se gestiona en el roster; backend: apps/operations + /roster/hierarchy/). */
+export const leadersApi = {
+  list: (params, options) => api.get(`/roster/hierarchy/leaders/${toQuery(params)}`, options),
+  create: (payload) => api.post("/roster/hierarchy/leaders/", payload),
+  update: (id, payload) => api.patch(`/roster/hierarchy/leaders/${id}/`, payload),
+};
+
+/** Niveles de la cadena de mando, del más alto al más bajo (parámetro de filtro, nivel, etiqueta). */
+export const CHAIN_LEVELS = [
+  ["director", "OPS_DIRECTOR", "Operations Director"],
+  ["manager", "OPS_MANAGER", "Operations Manager"],
+  ["supervisor", "ACCOUNT_SUPERVISOR", "Account Supervisor"],
+  ["team_manager", "TEAM_MANAGER", "Team Manager"],
+];

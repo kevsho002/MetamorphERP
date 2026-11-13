@@ -4,6 +4,7 @@ import AgentBoardPage from "./pages/AgentBoardPage.jsx";
 import AgentConsolePage from "./pages/AgentConsolePage.jsx";
 import AcdGroupsPage from "./pages/AcdGroupsPage.jsx";
 import AcdReportPage from "./pages/AcdReportPage.jsx";
+import MyPlanPage from "./pages/MyPlanPage.jsx";
 
 const AGENT = "acd.agent";
 const VIEW = "acd.view";
@@ -21,12 +22,14 @@ export const acdModule = {
   basePath: "/acd/console",
   menu: [
     { to: "/acd/console", label: "Mi estado (agente)" },
+    { to: "/acd/my-plan", label: "Mi plan y mi equipo" },
     { to: "/acd/agents", label: "Agentes en vivo", permission: VIEW },
     { to: "/acd/report", label: "Reporte de estados", permission: VIEW },
     { to: "/acd/groups", label: "Grupos y auxiliares", permission: VIEW },
   ],
   routes: [
     { path: "acd/console", element: guard(AGENT, AgentConsolePage) },
+    { path: "acd/my-plan", element: guard(AGENT, MyPlanPage) }, // Fase 19: autoservicio en modo lectura
     { path: "acd/agents", element: guard(VIEW, AgentBoardPage) },
     { path: "acd/report", element: guard(VIEW, AcdReportPage) },
     { path: "acd/groups", element: guard(VIEW, AcdGroupsPage) },

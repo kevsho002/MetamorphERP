@@ -19,6 +19,9 @@ En producción Django sirve también el build de React (un solo despliegue, mism
 | 14 | Barra superior estilo Genesys Cloud (botón «Iniciar Tiempo en Turno», avatar circular con el indicador del estado ACD y lista unificada de estados → auxiliares → sub-auxiliares en cascada por hover/clic) y menú lateral colapsable con pin y expansión automática por hover |
 | 15 | Dropdown de estados: altura máxima con scroll interno en el panel y en los submenús, y submenús en cascada posicionados dentro de los límites de la ventana |
 | 16 | Segmentos de actividad dentro del turno (contenedor de la AP), validación de pago / billing (auxiliar primario vs secundarios pagados), motor de adherencia con Out of Adherence y Unpaid Excess Login, justificaciones respaldadas por AP aprobada |
+| 17 | Planificación WFM estilo Nice IEX: filtros jerárquicos (Management Unit, cliente / marca, Operations Director → Operations Manager → Account Supervisor → Team Manager), barra de segmentos con drag & drop, grilla horizontal por intervalos, vista histórica del agente desde su contratación |
+| 18 | Ajustes de la planificación IEX: panel de filtros plegable, barra compacta de iconos con flechas, segmentos como línea delgada con icono cada 15 min, granularidad al segundo (modelos, SQL Server y UI), cadena de mando centralizada en el roster y audit trail por agente y fecha |
+| 19 | Reglas de asistencia y respaldo legal en WFM: Lateness automático bloqueado (solo se reemplaza con AP), Unjustified Absence con Legal Benefit Lunch, categorías del Time Utilization con desplegable en la barra, segmentos que exigen AP, ventana flotante del día (edición / lectura) y cola de aprobación de WFM |
 
 ```
 MetamorphERP/
@@ -883,6 +886,145 @@ App `apps.adherence` (tablas `adh_*`), pantallas en **Workforce (WFM)**. Ver: `w
   `dbo.vw_AdhDeviation`.
 * API: `/api/v1/adherence/` → `catalogs`, `activities`, `planner`, `segments` (+ `bulk`), `exceptions`, `report`,
   `detail`, `compute` (detalle en `apps/adherence/views.py`).
+
+## Planificación estilo IEX y jerarquía operativa (Fase 17)
+
+Pantalla **WFM › Planificación (grilla IEX)** (`/wfm/planner`) y **Roster › Cadena de mando** (`/roster/hierarchy`; desde la Fase 18,
+antes WFM › Jerarquía operativa).
+
+* **Jerarquía operativa** (`ops_leader`): Operations Director → Operations Manager → Account Supervisor → Team Manager.
+  Cada líder es un colaborador (FK a `hcm.Employee`) que reporta a un líder **activo del nivel inmediato superior**
+  (servicio + SQL **50080**); no se desactiva con subordinados activos. Cada líder se sincroniza con su dimensión del
+  roster (`OPS_DIRECTOR`, `OPS_MANAGER`, `ACCOUNT_SUPERVISOR`, `TEAM_MANAGER`, con el jefe como padre). Al agente se
+  le asigna su **Team Manager** en el roster (atributo temporal `team_manager`, con fechas); los niveles superiores
+  se derivan de la cadena. Vistas: `dbo.vw_OpsLeaderHierarchy` y `dbo.vw_RosterAgentHierarchy`.
+* **Panel izquierdo de filtros**: Management Unit (grupo de agentes ACD), cliente y marca (roster vigente en la
+  fecha) y desplegables **encadenados** de la jerarquía (cada nivel muestra solo los líderes bajo el elegido arriba;
+  manda el nivel más bajo elegido).
+* **Barra superior fija** con los cuadros (icono + color + duración sugerida) de los segmentos de la **cuenta**
+  elegida: `adh_activity_type.icon` y `adh_activity_client` (sin cuentas = todas), editables en «Actividades».
+* **Grilla horizontal** por intervalos (15 / 30 / 60 min) con columnas fijas de agente y adherencia: el turno
+  vigente (AP de horario) es el **pre-contenedor gris**; encima, los segmentos; debajo, la actividad real del ACD
+  (color del estado) y las marcas de Out of Adherence / Unpaid Excess Login. Metadatos en `adh_grid_setting`
+  (intervalo, ajuste al soltar y margen; global o por Management Unit).
+* **Drag & drop**: arrastrar un cuadro de la barra y soltarlo en la pista del agente crea el segmento a esa hora
+  (ajustada al «snap», con la duración sugerida y encajada dentro del pre-contenedor); arrastrar un segmento lo
+  mueve. Alternativa táctil / teclado: clic en el cuadro y clic en la hora. Cada cambio se guarda en el backend y
+  devuelve la **adherencia del día recalculada**; si ese día ya estaba guardado para nómina y calidad
+  (`adh_adherence_day`), se vuelve a guardar con el plan nuevo.
+* **Vista 1 – Grilla de grupo**: varios agentes en paralelo para una fecha, con KPIs y programación masiva.
+  **Vista 2 – Agente (histórico)**: todas las líneas de tiempo del colaborador **desde su fecha de contratación**,
+  día por día en páginas de 14 días (máx. 31), con su cadena de mando y la adherencia de cada día.
+* API: `/api/v1/adherence/grid/` (`filters/`, `agent/`, `settings/`, `audit/`) y `/api/v1/roster/hierarchy/leaders/` (Fase 18). Ver: `wfm.view`;
+  editar: `wfm.manage`.
+
+## Ajustes de la planificación, segundos, cadena de mando en el roster y audit trail (Fase 18)
+
+* **Panel de filtros plegable** (igual que el menú de módulos): el botón de la cabecera lo fija o lo contrae a una
+  barra de íconos (Management Unit, cuenta, cadena de mando, búsqueda; un punto marca los que filtran). Contraído, se
+  despliega SOBRE la grilla al pasar el cursor o con el foco del teclado, sin moverla, y se vuelve a contraer al salir
+  (Esc también). La preferencia se recuerda en el navegador. En pantallas angostas queda arriba y muestra solo su cabecera.
+* **Barra compacta de actividades**: un cuadrado por actividad (solo el icono sobre su color) en una tira horizontal
+  continua, sin barra de desplazamiento nativa; las flechas laterales (y la rueda del ratón) la desplazan y se
+  desactivan en los extremos. El nombre, la duración sugerida y si es pagada / facturable aparecen en un tooltip
+  flotante (hover o foco). Se siguen arrastrando a la grilla o se eligen con clic y luego clic en la hora.
+* **Segmentos como línea delgada** dentro del pre-contenedor gris, con el icono de la actividad repetido cada 15 minutos
+  desde su inicio (patrón visual); el detalle va en el tooltip.
+* **Granularidad al segundo**:
+  * La API acepta `HH:MM:SS` en segmentos (`start` / `end`) y `AAAA-MM-DDTHH:MM:SS` en justificaciones; devuelve
+    `seconds` (exacto) y `minutes` con decimales en segmentos, bloques del plan y contenedores. El mínimo de un segmento
+    es de 60 s (antes 5 min).
+  * `adh_activity_type.default_seconds` (antes `default_minutes`) y `adh_grid_setting.snap_seconds` (antes
+    `snap_minutes`): ajuste al soltar de **1 s**, 15 s, 30 s, 1, 5, 15 o 30 min. Con 1 s la hora queda donde se suelta.
+  * SQL Server: los CHECK `ck_adh_segment_whole_seconds`, `ck_adh_exception_whole_seconds` y
+    `ck_adh_deviation_whole_seconds` exigen segundos enteros (sin fracciones). `vw_AdhScheduleSegment` calcula con
+    `DATEDIFF(SECOND)` (`DurationSeconds` y `Minutes` decimal). Antes, `DATEDIFF(MINUTE)` contaba fronteras de
+    minuto, así que 10:00:50–10:01:10 daba 1 minuto. `vw_AdhAdherenceDay` agrega las columnas `…Seconds`.
+  * El motor ya calculaba en segundos. Los eventos del ACD se guardan con milisegundos (`datetimeoffset(7)`,
+    `duration_ms`) y se cruzan con el plan al segundo. La interfaz muestra `H:MM:SS` y edita con `step=1`.
+  * El tiempo pagado que el ACD envía a nómina como marcaciones WEB_TIMER sigue siendo al minuto, porque las marcaciones
+    de nómina (`sch_time_record`) son por minuto.
+* **Cadena de mando en el roster**: la gestión pasó a **Roster › Cadena de mando** (`/roster/hierarchy`, permisos
+  `roster.view` / `roster.manage`, auditoría en la categoría ROSTER); `/wfm/hierarchy` redirige allí y la API
+  `/api/v1/operations/leaders/` se reemplazó por `/api/v1/roster/hierarchy/leaders/`.
+  * En el expediente › Roster, la sección **Cadena de mando** muestra, a la fecha consultada, su Team Manager (del
+    roster) y los niveles derivados. Si el colaborador es líder, muestra su rol, a quién reporta y cuántos le reportan,
+    y permite asignar o editar el rol sin salir del roster.
+  * La **Consulta de roster** agrega la columna «Cadena de mando» y los filtros encadenados Director → Manager →
+    Supervisor → Team Manager. Los mismos datos alimentan los filtros y la grilla de WFM.
+* **Audit trail por línea / fecha**: un clic en la cabecera de una fila de la grilla (agente) o de la vista del agente
+  (fecha), o en su ícono de reloj, abre un panel lateral (`GET /api/v1/adherence/grid/audit/?employee=&date=`). Muestra
+  en orden cronológico inverso, con filtros Cambios / Aprobaciones / Acciones / Sistema:
+  * segmentos programados, movidos y eliminados, con el **antes y el después** al segundo, y la programación masiva;
+  * justificaciones;
+  * la AP de horario que creó el pre-contenedor y las AP que justifican tiempo: elaboración, envío, cada firma de
+    aprobación o rechazo (paso, firmante, comentario) y su aplicación;
+  * el Team Manager del roster vigente y sus correcciones;
+  * las sesiones ACD del día;
+  * el resultado guardado para nómina y calidad y su recálculo tras cambiar el plan;
+  * el cierre del corte de asistencia.
+
+  Los eventos nuevos guardan en `sys_audit_event.details` la fecha de turno y el antes / después. Los eventos
+  anteriores a la Fase 18 se reconocen por la fecha escrita en su descripción.
+
+## Asistencia automática, Time Utilization, AP obligatoria y ventana del día (Fase 19)
+
+* **Lateness automático (bloqueado)**: si el agente inicia sesión en el ACD / Web Timer después de la entrada del
+  bloque en curso + la **tolerancia** de su Management Unit (`adh_grid_setting.lateness_grace_seconds`, 60 s por
+  defecto), el sistema inserta un segmento **Lateness** que cubre el retraso al segundo (origen «Automático»,
+  `is_locked`). No se elimina ni se mueve: solo se **reemplaza** con un segmento documentado y el folio de una **AP
+  aprobada** del agente (`POST /api/v1/adherence/segments/{id}/replace/`). Si el reemplazo cubre solo una parte, lo
+  demás sigue bloqueado. SQL Server lo protege con `TR_adh_schedule_segment_locked` (50073); solo el servicio de
+  reemplazo lo libera (`SESSION_CONTEXT N'adh.replace_locked'`).
+* **Unjustified Absence + Legal Benefit Lunch**: si en todo el bloque del turno no hubo sesión ACD, el contenedor se
+  marca como **Unjustified Absence** (bloqueado), salvo un bloque de **Legal Benefit Lunch** donde estaba el almuerzo
+  (o al centro del turno), con la duración del almuerzo del horario. Los segmentos del plan que exigían sesión (break,
+  almuerzo, coaching…) quedan sin efecto y su antes queda en la auditoría.
+  * Se mantiene **separado** el personal inactivo (no activo, aún no contratado o dado de baja en la fecha) y el que
+    tiene permiso / licencia (justificación por AP o actividades sin sesión que cubren el turno): no se marcan como
+    ausentes.
+  * La grilla muestra el estado por fila (Lateness, Ausencia injustificada, Permiso / licencia, Inactivo) y la
+    **dotación neta** (con turno − ausentes − permisos − inactivos).
+  * Se concilia con el botón **Conciliar asistencia** de la grilla (`POST /api/v1/adherence/attendance/reconcile/`),
+    al **Guardar adherencia** (antes del cálculo de los días terminados; `reconcile: false` lo omite) o a diario con
+    `python manage.py adh_reconcile_attendance [--date AAAA-MM-DD] [--group CODIGO]` (por defecto, ayer). Es idempotente.
+  * El motor de adherencia ahora distingue actividades que **no exigen sesión ACD** (`requires_acd_login`): permisos de
+    RRHH, fallas de sistema, Worked Time Unlogged o el almuerzo legal cuentan como en adherencia sin sesión y se pagan /
+    facturan según la actividad. Lateness y ausencia no son pagados y cuentan como Out of Adherence.
+* **Categorías del Time Utilization** (`adh_activity_category`), tomadas de *Time Utilization Project - Kevin
+  Duran.xlsx* (Departamento → Segmento principal → Sub segmento): Billable - Regular Segments, Out of the Phone Work,
+  Worked Time Unlogged, Training, System Issues, HR Confidential Paid / Unpaid y Asistencia automática; 97 sub
+  segmentos sembrados como actividades más las 3 del sistema. Las actividades existentes se clasificaron (Break 1 / 2,
+  Open y Back Office Work corresponden a Break, Producción y Back Office).
+  * La matriz de cada sub segmento queda en la actividad: requiere sesión ACD, día completo / parcial, **requiere AP**,
+    pagado (nómina), pagado por el cliente (obligatorio / opcional) y áreas que revisan (ECD, WFM, IT, HR, FIN, OM, UM).
+    **La matriz del archivo venía vacía**: los valores iniciales son por categoría (p. ej. los permisos de RRHH exigen AP
+    y no exigen sesión) y se ajustan en **WFM › Actividades**, que ahora filtra por categoría y busca.
+  * En la planificación, un **desplegable de categorías** junto a la barra muestra solo los segmentos de la categoría
+    elegida (se recuerda en el navegador); los que exigen AP llevan un punto rojo y lo dicen en el tooltip. Las
+    actividades del sistema no se ofrecen en la barra (SQL 50074 las rechaza si no las inserta el sistema).
+* **Restricción por AP**: WFM coloca libremente los segmentos operativos; exigen el folio de una **AP aprobada del
+  mismo empleado** (`folio` en el segmento, `adh_schedule_segment.personnel_action`):
+  * las actividades marcadas «requiere AP» (respaldo legal ante el Ministerio de Trabajo);
+  * los segmentos que cubren el **día completo** del turno;
+  * los **cambios mayores**: duración ≥ `ap_required_seconds` de la Management Unit (4 h por defecto; 0 = solo los dos
+    casos anteriores). Ambos umbrales se editan en «Grilla» de la planificación.
+  * La programación masiva no acepta actividades que exigen AP. SQL Server: `TR_adh_schedule_segment_rules` (50072).
+* **Ventana flotante de detalle**: al hacer clic en una actividad o en el pre-contenedor se abre un modal (reemplaza a
+  la barra de edición superior) con la tabla del día: actividad, inicio, fin, duración, notas / observaciones y respaldo
+  (origen, AP, quién la programó). `GET /api/v1/adherence/day/?employee=&date=`.
+  * **WFM con `wfm.manage`**: edita, agrega, elimina y reemplaza (Lateness / ausencia con AP; la ausencia puede
+    reemplazarse completa con un permiso de día completo).
+  * **Modo lectura** para el propio agente, su **supervisor** (cadena de mando del roster en la fecha) y WFM de solo
+    lectura: las correcciones de segmentos se envían a la **cola de aprobación de WFM**; los cambios del **día completo**
+    no pasan por la cola y llevan al flujo de **AP**.
+  * Agentes y supervisores lo usan desde **ACD › Mi plan y mi equipo** (`/acd/my-plan`, `GET /api/v1/adherence/my-plan/`).
+* **Cola de aprobación WFM** (`/wfm/requests`, `adh_change_request`, vista `vw_AdhChangeRequest`): agregar, cambiar o
+  quitar segmentos, con el antes, la propuesta, la AP de respaldo y el motivo. WFM aprueba (se aplica al plan con origen
+  «solicitud aprobada» y se recalcula la adherencia) o rechaza con comentario; nadie aprueba su propia solicitud y quien
+  la pidió puede anularla. API: `GET|POST /api/v1/adherence/requests/`, `POST …/{id}/decide/` y `…/{id}/cancel/`.
+* Todo queda en el **audit trail** de la línea: Lateness / ausencia detectados, reemplazos con AP, solicitudes y su
+  resolución (aprobaciones). `vw_AdhScheduleSegment` agrega origen, bloqueo, AP de respaldo, departamento y categoría.
 
 ## Fuera de alcance (por ahora)
 * JWT / SSO (la API usa sesión + CSRF; el SPA no maneja tokens).

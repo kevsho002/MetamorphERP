@@ -80,19 +80,22 @@ _DT_PATTERNS = (
 )
 
 
-def parse_wall_clock(value: Any) -> datetime | None:
-    """Fecha y hora LOCAL (sin zona). Acepta ISO, dd/mm/aaaa hh:mm y datetimes de Excel."""
+def parse_wall_clock(value: Any, *, keep_seconds: bool = False) -> datetime | None:
+    """Fecha y hora LOCAL (sin zona). Acepta ISO, dd/mm/aaaa hh:mm y datetimes de Excel.
+
+    Las marcaciones de nómina van al minuto; `keep_seconds=True` conserva los segundos (planificación WFM, Fase 18)."""
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
         result = timezone.make_naive(value) if timezone.is_aware(value) else value
-        return result.replace(second=0, microsecond=0)
+        return result.replace(microsecond=0) if keep_seconds else result.replace(second=0, microsecond=0)
     text = str(value).strip()
     if text.endswith("Z") or re.search(r"[+-]\d{2}:\d{2}$", text):
         return None  # con zona horaria: se rechaza para no correr la fecha de ocurrencia
     for pattern in _DT_PATTERNS:
         try:
-            return datetime.strptime(text, pattern).replace(second=0)
+            parsed = datetime.strptime(text, pattern)
+            return parsed if keep_seconds else parsed.replace(second=0)
         except ValueError:
             continue
     return None

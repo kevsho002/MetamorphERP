@@ -182,3 +182,121 @@ class SubLineOfBusiness(CatalogEntry):
 
 
 CATALOG_MODELS = (Client, Brand, LineOfBusiness, SubLineOfBusiness)
+
+
+# ==================================================================== Fase 17: jerarquía operativa
+class HierarchyLevel(models.TextChoices):
+    """Niveles de la jerarquía operativa, de arriba hacia abajo. Cada nivel reporta al inmediato superior."""
+
+    OPS_DIRECTOR = "OPS_DIRECTOR", "Operations Director"
+    OPS_MANAGER = "OPS_MANAGER", "Operations Manager"
+    ACCOUNT_SUPERVISOR = "ACCOUNT_SUPERVISOR", "Account Supervisor"
+    TEAM_MANAGER = "TEAM_MANAGER", "Team Manager"
+
+
+HIERARCHY_ORDER = [HierarchyLevel.OPS_DIRECTOR, HierarchyLevel.OPS_MANAGER, HierarchyLevel.ACCOUNT_SUPERVISOR,
+                   HierarchyLevel.TEAM_MANAGER]
+# Dimensión del roster que alimenta cada nivel (misma clave que el nivel).
+HIERARCHY_DIMENSIONS = {lvl.value: lvl.label for lvl in HIERARCHY_ORDER}
+TEAM_MANAGER_ATTRIBUTE = "team_manager"  # atributo temporal del roster: Team Manager del agente
+
+
+def parent_level(level: str) -> str | None:
+    i = [lvl.value for lvl in HIERARCHY_ORDER].index(level)
+    return HIERARCHY_ORDER[i - 1].value if i else None
+
+
+class OperationalLeader(models.Model):
+    """Puesto de liderazgo de la jerarquía operativa ocupado por un colaborador (Fase 17).
+
+    Operations Director ──< Operations Manager ──< Account Supervisor ──< Team Manager
+
+    Cada líder mantiene sincronizado su elemento en la dimensión del roster de su nivel (OPS_DIRECTOR, OPS_MANAGER,
+    ACCOUNT_SUPERVISOR, TEAM_MANAGER) con el elemento de su jefe como padre. Al agente se le asigna su Team Manager
+    con el atributo temporal del roster «team_manager» (historial por fechas); los niveles superiores se derivan de
+    la cadena «reporta a». Un líder no se borra: se desactiva (no puede tener subordinados activos).
+    """
+
+    Level = HierarchyLevel
+
+    level = models.CharField("nivel", max_length=20, choices=HierarchyLevel)
+    employee = models.ForeignKey(
+        "hcm.Employee", on_delete=models.DO_NOTHING, db_column="employee_id",
+        db_constraint=False,  # FK explícita en la migración 0004 (hcm.Employee es SQL-first)
+        related_name="leader_roles", verbose_name="colaborador",
+    )
+    reports_to = models.ForeignKey(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="direct_reports", verbose_name="reporta a",
+        help_text="Líder del nivel inmediato superior (vacío solo para Operations Director).",
+    )
+    client = models.ForeignKey(
+        Client, on_delete=models.PROTECT, null=True, blank=True, related_name="leaders", verbose_name="cuenta (cliente)",
+        help_text="Opcional: cuenta que lidera (filtra la jerarquía por cliente).",
+    )
+    is_active = models.BooleanField("activo", default=True)
+    roster_item = models.OneToOneField(
+        RosterDimensionItem, on_delete=models.PROTECT, null=True, blank=True, editable=False, related_name="leader",
+        verbose_name="elemento del roster",
+    )
+    created_at = models.DateTimeField("creado", auto_now_add=True)
+    updated_at = models.DateTimeField("actualizado", auto_now=True)
+
+    class Meta:
+        db_table = "ops_leader"
+        ordering = ["level", "employee_id"]
+        verbose_name = "líder de la jerarquía operativa"
+        verbose_name_plural = "jerarquía operativa (líderes)"
+        constraints = [
+            models.UniqueConstraint(fields=["level", "employee"], name="uq_ops_leader_level_employee"),
+            models.CheckConstraint(condition=models.Q(level__in=HierarchyLevel.values), name="ck_ops_leader_level"),
+            models.CheckConstraint(
+                condition=(models.Q(level=HierarchyLevel.OPS_DIRECTOR, reports_to__isnull=True)
+                           | (~models.Q(level=HierarchyLevel.OPS_DIRECTOR) & models.Q(reports_to__isnull=False))),
+                name="ck_ops_leader_reports_to",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_level_display()}: {self.employee}"
+
+    @property
+    def code(self) -> str:
+        return self.employee.employee_code
+
+    def clean(self):
+        errors = {}
+        expected = parent_level(self.level) if self.level else None
+        boss = self.reports_to if self.reports_to_id else None
+        if expected is None and boss is not None:
+            errors["reports_to"] = "El Operations Director es el nivel superior: no reporta a otro líder."
+        elif expected is not None and boss is None:
+            errors["reports_to"] = f"Indique el {HierarchyLevel(expected).label} al que reporta."
+        elif boss is not None and boss.level != expected:
+            errors["reports_to"] = f"Debe reportar a un {HierarchyLevel(expected).label}."
+        elif boss is not None and self.is_active and not boss.is_active:
+            errors["reports_to"] = f"{boss} está inactivo."
+        if self.pk and not self.is_active and self.direct_reports.filter(is_active=True).exists():
+            errors["is_active"] = "Tiene subordinados activos: reasígnelos antes de desactivarlo."
+        if errors:
+            raise ValidationError(errors)
+
+    def sync_roster_item(self) -> None:
+        dimension = RosterDimension.objects.filter(code=self.level).first()
+        if dimension is None:
+            raise ValidationError(f"Falta la dimensión «{self.level}» del roster (migración operations 0003).")
+        item = self.roster_item or RosterDimensionItem.objects.filter(dimension=dimension, code=self.code).first()
+        if item is None:
+            item = RosterDimensionItem(dimension=dimension)
+        item.code = self.code
+        item.name = self.employee.full_name
+        item.is_active = self.is_active
+        item.parent = self.reports_to.roster_item if self.reports_to_id else None
+        item.save()
+        if self.roster_item_id != item.pk:
+            OperationalLeader.objects.filter(pk=self.pk).update(roster_item=item)
+            self.roster_item = item
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            self.sync_roster_item()

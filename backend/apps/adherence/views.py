@@ -12,6 +12,27 @@ DELETE /adherence/exceptions/{id}/
 GET    /adherence/report/?from=&to=&group=&employee=          adherencia, pago válido, billing y excesos por agente y día
 GET    /adherence/detail/?employee=&date=                     línea de tiempo plan vs real con desviaciones
 POST   /adherence/compute/                                    {from, to, group?, employee?}: guarda el cálculo (nómina / calidad)
+
+Fase 17 — planificación estilo IEX:
+GET    /adherence/grid/filters/                               Management Units, clientes / marcas, líderes por nivel, metadatos
+GET    /adherence/grid/?date=&group=&client=&brand=&director=&manager=&supervisor=&team_manager=&search=
+                                                              grilla multi-agente: pre-contenedor, segmentos, real, adherencia
+GET    /adherence/grid/agent/?employee=&from=&to=             vista histórica del agente (desde su contratación, ≤ 31 días)
+GET    /adherence/grid/settings/?group=  ·  PUT               intervalo, ajuste al soltar y margen de la grilla
+Fase 18:
+GET    /adherence/grid/audit/?employee=&date=                 audit trail de la línea (agente + fecha): cambios del plan con
+                                                              antes / después, AP y firmas, roster, sesiones ACD, cálculo
+Fase 19:
+POST   /adherence/segments/{id}/replace/                      reemplaza un Lateness / ausencia BLOQUEADO con un segmento
+                                                              respaldado por AP {activity, folio, start?, end?, scope?}
+POST   /adherence/attendance/reconcile/                       {date, filtros de la grilla}: Lateness y Unjustified Absence
+GET    /adherence/day/?employee=&date=                        ventana flotante del día (WFM, el agente o su cadena de mando)
+GET    /adherence/requests/?status=  ·  POST                  cola de aprobación de WFM (correcciones de segmentos)
+POST   /adherence/requests/{id}/decide/  ·  /cancel/          WFM aprueba / rechaza; quien la pidió la anula
+GET    /adherence/my-plan/?date=                              autoservicio (lectura): mi día y el de mi equipo
+Los tiempos aceptan HH:MM:SS (granularidad al segundo).
+Los POST / PATCH / DELETE de segmentos devuelven `refresh`: adherencia en vivo del día y, si ese día ya estaba
+guardado para nómina y calidad, se vuelve a guardar con el plan nuevo.
 """
 
 from datetime import timedelta
@@ -26,9 +47,12 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import HasActionPermission, PasswordChangeNotRequired, user_permissions
 from apps.accounts.roles import Perm
 from apps.acd.models import AgentGroup, AuxCode, PrimaryStatus
-from apps.adherence import services
-from apps.adherence.models import ActivityStatusRule, ActivityType, AdherenceException, ScheduleSegment
+from apps.adherence import attendance, audit_trail, change_requests, grid, services
+from apps.adherence.models import (
+    ICONS, REVIEW_AREAS, ActivityStatusRule, ActivityType, AdherenceException, ChangeRequest, ScheduleSegment,
+)
 from apps.hcm.models import Employee
+from apps.operations.models import Client
 from apps.scheduling.services import parse_any_date
 
 PERMISSIONS = [IsAuthenticated, PasswordChangeNotRequired, HasActionPermission]
@@ -36,6 +60,9 @@ NO_STORE = {"Cache-Control": "no-store"}
 SQL_ERRORS = (
     ("50070", "SQL Server rechazó el segmento: se traslapa con otro segmento del agente."),
     ("50071", "SQL Server rechazó la justificación: la AP debe estar aprobada y ser del mismo empleado."),
+    ("50072", "SQL Server rechazó el segmento: la actividad o el cambio exige una AP aprobada del mismo empleado."),
+    ("50073", "SQL Server rechazó el cambio: el Lateness o la ausencia no se elimina ni se mueve; solo se reemplaza con AP."),
+    ("50074", "SQL Server rechazó el segmento: las actividades de asistencia solo las inserta el sistema."),
     ("uq_adh_activity_default", "Solo puede haber una actividad predeterminada."),
 )
 
@@ -105,6 +132,11 @@ class CatalogsView(_View):
             "aux_codes": [{"code": a.code, "name": a.full_name, "primary_status": a.primary_status.code, "is_paid": a.paid,
                            "parent": a.parent.code if a.parent_id else None, "is_active": a.is_active} for a in auxes],
             "groups": [{"code": g.code, "name": g.name} for g in AgentGroup.objects.filter(is_active=True).order_by("name")],
+            "icons": [{"value": v, "label": label} for v, label in ICONS],
+            "utilization_categories": grid.categories(),
+            "client_paid": [{"value": v, "label": label} for v, label in ActivityType.ClientPaid.choices],
+            "review_areas": [{"value": v, "label": label} for v, label in REVIEW_AREAS],
+            "clients": [{"code": c.code, "name": c.name} for c in Client.objects.filter(is_active=True).order_by("name")],
             "can_manage": Perm.WFM_MANAGE in user_permissions(request.user),
         }, headers=NO_STORE)
 
@@ -150,7 +182,7 @@ class SegmentsView(_View):
         data = _data(request)
         employee = _employee(data.get("employee_code"))
         seg = services.save_segment(employee, data, user=request.user, request=request)
-        return Response({"segment": services.segment_dict(seg),
+        return Response({"segment": services.segment_dict(seg), "refresh": services.refresh_after_plan_change(employee, seg.shift_date, user=request.user),
                          "feedback": f"{seg.activity.name} {seg.start_at:%H:%M}–{seg.end_at:%H:%M} programado para {employee.employee_code}."},
                         status=status.HTTP_201_CREATED)
 
@@ -184,11 +216,14 @@ class SegmentDetailView(_View):
     def patch(self, request, pk: int):
         seg = self._get(pk)
         seg = services.save_segment(seg.employee, _data(request), segment=seg, user=request.user, request=request)
-        return Response({"segment": services.segment_dict(seg), "feedback": "Segmento actualizado."})
+        return Response({"segment": services.segment_dict(seg), "refresh": services.refresh_after_plan_change(seg.employee, seg.shift_date, user=request.user),
+                         "feedback": f"{seg.activity.name} movido a {services.hm(seg.start_at)}–{services.hm(seg.end_at)}."})
 
     def delete(self, request, pk: int):
-        services.delete_segment(self._get(pk), user=request.user, request=request)
-        return Response({"feedback": "Segmento eliminado."})
+        seg = self._get(pk)
+        employee, d = seg.employee, seg.shift_date
+        services.delete_segment(seg, user=request.user, request=request)
+        return Response({"feedback": "Segmento eliminado.", "refresh": services.refresh_after_plan_change(employee, d, user=request.user)})
 
 
 class ExceptionsView(_View):
@@ -249,5 +284,147 @@ class ComputeView(_View):
     def post(self, request):
         data = _data(request)
         date_from, date_to = _range(data)
-        result = services.compute_and_store(_employees(data), date_from, date_to, user=request.user, request=request)
+        employees = _employees(data)
+        if data.get("reconcile", True) and date_from:
+            # Fase 19: antes de guardar, la asistencia (Lateness / Unjustified Absence) de los días terminados.
+            last = min(date_to or date_from, services.now_local().date() - timedelta(days=1))
+            day = date_from
+            while day <= last and (day - date_from).days < services.MAX_RANGE_DAYS:
+                attendance.reconcile(employees, day, user=request.user, request=request)
+                day += timedelta(days=1)
+        result = services.compute_and_store(employees, date_from, date_to, user=request.user, request=request)
         return Response({**result, "feedback": f"Adherencia guardada: {result['stored']} días-agente hasta el {result['until']}."})
+
+
+# ================================================================ Fase 17: planificación estilo IEX
+class GridFiltersView(_View):
+    method_permissions = {"get": Perm.WFM_VIEW}
+
+    def get(self, request):
+        return Response({**grid.filters_payload(), "can_manage": Perm.WFM_MANAGE in user_permissions(request.user)}, headers=NO_STORE)
+
+
+class GridView(_View):
+    method_permissions = {"get": Perm.WFM_VIEW}
+
+    def get(self, request):
+        p = request.query_params
+        d = parse_any_date(p.get("date"))
+        if d is None:
+            raise services.AdhErrors({"date": "Indique la fecha del turno (AAAA-MM-DD)."})
+        employees = grid.select_grid_employees(p, d)
+        data = grid.grid_day(employees, d, p)
+        return Response({**data, "can_manage": Perm.WFM_MANAGE in user_permissions(request.user)}, headers=NO_STORE)
+
+
+class AgentHistoryView(_View):
+    method_permissions = {"get": Perm.WFM_VIEW}
+
+    def get(self, request):
+        p = request.query_params
+        date_from, date_to = _range(p, default_to_from=False)
+        data = grid.agent_history(_employee(p.get("employee")), date_from, date_to)
+        return Response({**data, "can_manage": Perm.WFM_MANAGE in user_permissions(request.user)}, headers=NO_STORE)
+
+
+class AuditTrailView(_View):
+    method_permissions = {"get": Perm.WFM_VIEW}
+
+    def get(self, request):
+        p = request.query_params
+        d = parse_any_date(p.get("date"))
+        if d is None:
+            raise services.AdhErrors({"date": "Indique la fecha del turno (AAAA-MM-DD)."})
+        return Response(audit_trail.audit_trail(_employee(p.get("employee")), d), headers=NO_STORE)
+
+
+class GridSettingView(_View):
+    method_permissions = {"get": Perm.WFM_VIEW, "put": Perm.WFM_MANAGE}
+
+    def get(self, request):
+        return Response(grid.setting_dict(grid.grid_setting(str(request.query_params.get("group") or ""))), headers=NO_STORE)
+
+    def put(self, request):
+        s = grid.save_setting(_data(request), user=request.user)
+        return Response({**grid.setting_dict(s), "feedback": "Configuración de la grilla guardada."})
+
+
+# ================================================================ Fase 19: asistencia, ventana del día y cola de WFM
+class _OpenView(_View):
+    """Autenticado; el acceso fino (WFM / el propio agente / su cadena de mando) lo decide el servicio."""
+
+    permission_classes = [IsAuthenticated, PasswordChangeNotRequired]
+
+
+class SegmentReplaceView(_View):
+    method_permissions = {"post": Perm.WFM_MANAGE}
+
+    def post(self, request, pk: int):
+        seg = get_object_or_404(ScheduleSegment.objects.select_related("employee", "activity"), pk=pk)
+        employee, d = seg.employee, seg.shift_date
+        new = services.replace_segment(seg, _data(request), user=request.user, request=request)
+        return Response({"segment": services.segment_dict(new), "refresh": services.refresh_after_plan_change(employee, d, user=request.user),
+                         "feedback": f"Reemplazado por {new.activity.name} {services.hm(new.start_at)}–{services.hm(new.end_at)} "
+                                     f"con la AP {new.personnel_action.folio}."})
+
+
+class ReconcileView(_View):
+    method_permissions = {"post": Perm.WFM_MANAGE}
+
+    def post(self, request):
+        data = _data(request)
+        d = parse_any_date(data.get("date"))
+        if d is None:
+            raise services.AdhErrors({"date": "Indique la fecha del turno (AAAA-MM-DD)."})
+        if data.get("employee"):
+            employees = services.select_employees(employee=str(data["employee"]))
+        else:
+            employees = grid.select_grid_employees(data, d)
+        if len(employees) > services.MAX_EMPLOYEES:
+            raise services.AdhError(f"Demasiados agentes (máx. {services.MAX_EMPLOYEES}): filtre la grilla.", "too_many")
+        out = attendance.reconcile(employees, d, user=request.user, request=request)
+        return Response({**out, "feedback": f"Asistencia del {services.fmt(d)}: {out['lateness']} lateness y {out['absences']} "
+                                            f"ausencias nuevas; {out['on_leave']} con permiso y {out['inactive']} inactivos separados."})
+
+
+class DayView(_OpenView):
+    def get(self, request):
+        p = request.query_params
+        d = parse_any_date(p.get("date"))
+        if d is None:
+            raise services.AdhErrors({"date": "Indique la fecha del turno (AAAA-MM-DD)."})
+        return Response(change_requests.day_detail(request.user, _employee(p.get("employee")), d), headers=NO_STORE)
+
+
+class RequestsView(_OpenView):
+    def get(self, request):
+        return Response(change_requests.list_requests(request.user, request.query_params), headers=NO_STORE)
+
+    def post(self, request):
+        data = _data(request)
+        r = change_requests.create_request(request.user, _employee(data.get("employee_code")), data, request=request)
+        return Response({"request": change_requests.request_dict(r),
+                         "feedback": f"Solicitud #{r.pk} enviada a la cola de aprobación de WFM."}, status=status.HTTP_201_CREATED)
+
+
+class RequestDecideView(_View):
+    method_permissions = {"post": Perm.WFM_MANAGE}
+
+    def post(self, request, pk: int):
+        r = get_object_or_404(ChangeRequest, pk=pk)
+        out = change_requests.decide(r, _data(request), user=request.user, request=request)
+        verb = "aprobada y aplicada" if out["request"]["status"] == "APPROVED" else "rechazada"
+        return Response({**out, "feedback": f"Solicitud #{pk} {verb}."})
+
+
+class RequestCancelView(_OpenView):
+    def post(self, request, pk: int):
+        r = get_object_or_404(ChangeRequest.objects.select_related("employee"), pk=pk)
+        r = change_requests.cancel(r, user=request.user, request=request)
+        return Response({"request": change_requests.request_dict(r), "feedback": f"Solicitud #{pk} anulada."})
+
+
+class MyPlanView(_OpenView):
+    def get(self, request):
+        d = parse_any_date(request.query_params.get("date")) or services.now_local().date()
+        return Response(change_requests.my_plan(request.user, d), headers=NO_STORE)

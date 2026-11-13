@@ -160,6 +160,10 @@ def login(employee: Employee, *, user=None, source: str = Source.AGENT) -> Statu
                     now=now, source=source, user=user)
     record("acd_login", Category.ACD, f"{employee.employee_code} inició sesión ACD (grupo {membership.group.code}).",
            actor=user, target=employee, details={"session": session.pk})
+    # Fase 19: inicio de sesión después de la entrada programada → segmento Lateness bloqueado en el plan de WFM.
+    from apps.adherence.attendance import detect_lateness_safely
+
+    detect_lateness_safely(employee, login_at=now, user=user)
     return segment
 
 
