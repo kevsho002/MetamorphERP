@@ -25,3 +25,9 @@ superusuario.txt
 
 # Fase 26: credenciales de los datos de prueba (texto plano)
 accesos_prueba.txt
+
+# Respaldos de la base de datos (contienen datos reales)
+*.bak
+
+# Prompts de trabajo (no se versionan)
+Indicaciones/
