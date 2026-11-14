@@ -19,6 +19,7 @@ en la ficha de cada cliente y de cada marca (tablas gid_id_type_client / gid_id_
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 
+from apps.common.fields import sql_table
 from apps.common.models import Country
 from apps.roster.models import ITEM_CODE, RosterDimension, RosterDimensionItem
 
@@ -100,7 +101,7 @@ class Client(CatalogEntry):
     legal_name = models.CharField("razón social", max_length=200, blank=True)
 
     class Meta(CatalogEntry.Meta):
-        db_table = "ops_client"
+        db_table = sql_table("org", "ops_client")
         verbose_name = "cliente"
         verbose_name_plural = "clientes"
 
@@ -119,7 +120,7 @@ class Brand(CatalogEntry):
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="brands", verbose_name="cliente")
 
     class Meta(CatalogEntry.Meta):
-        db_table = "ops_brand"
+        db_table = sql_table("org", "ops_brand")
         ordering = ["client__name", "name"]
         verbose_name = "marca (brand)"
         verbose_name_plural = "marcas (brands)"
@@ -146,7 +147,7 @@ class LineOfBusiness(CatalogEntry):
     ROSTER_DIMENSION = "LOB"
 
     class Meta(CatalogEntry.Meta):
-        db_table = "ops_line_of_business"
+        db_table = sql_table("org", "ops_line_of_business")
         verbose_name = "línea de negocio (LOB)"
         verbose_name_plural = "líneas de negocio (LOB)"
 
@@ -167,7 +168,7 @@ class SubLineOfBusiness(CatalogEntry):
     )
 
     class Meta(CatalogEntry.Meta):
-        db_table = "ops_sub_line_of_business"
+        db_table = sql_table("org", "ops_sub_line_of_business")
         ordering = ["line__name", "name"]
         verbose_name = "sub-línea de negocio"
         verbose_name_plural = "sub-líneas de negocio"
@@ -242,7 +243,7 @@ class OperationalLeader(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "ops_leader"
+        db_table = sql_table("org", "ops_leader")
         ordering = ["level", "employee_id"]
         verbose_name = "líder de la jerarquía operativa"
         verbose_name_plural = "jerarquía operativa (líderes)"

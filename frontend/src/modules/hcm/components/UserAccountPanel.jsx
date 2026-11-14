@@ -6,6 +6,7 @@ import { useRoles } from "../hooks/useRoles.js";
 import { formatDateTime } from "../lib/format.js";
 import AccountSearch from "./AccountSearch.jsx";
 import TemporaryPassword from "./TemporaryPassword.jsx";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 /**
  * Cuenta Metamorph vinculada al empleado (FK por ID corporativo): crearla si no existe (o, Fase 7,
@@ -202,7 +203,7 @@ export default function UserAccountPanel({ employee, onChanged }) {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <small className="field__hint">Vacío = se genera a partir del nombre.</small>
+              <FieldHint>Vacío = se genera a partir del nombre.</FieldHint>
             </div>
           </div>
           <button type="button" className="button" onClick={create} disabled={Boolean(busy)}>

@@ -29,7 +29,8 @@ export const payrollApi = {
   updateBatch: (id, payload) => api.patch(`/payroll/batches/${id}/`, payload),
   // Fase 21: pre-cierre, portal, excepciones, reglas por cuenta, feriados y liquidaciones
   iterations: (id, options) => api.get(`/payroll/runs/${id}/iterations/`, options),
-  myPayslips: (options) => api.get("/payroll/me/payslips/", options),
+  myPayslips: (params, options) => api.get(`/payroll/me/payslips/${toQuery(params)}`, options),
+  myCutoffs: (params, options) => api.get(`/payroll/me/cutoffs/${toQuery(params)}`, options), // Fase 27
   exceptions: (params, options) => api.get(`/payroll/exceptions/${toQuery(params)}`, options),
   reportException: (payload) => api.post("/payroll/exceptions/", payload),
   resolveException: (id, payload) => api.post(`/payroll/exceptions/${id}/resolve/`, payload),

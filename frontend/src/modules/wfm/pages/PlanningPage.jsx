@@ -9,6 +9,8 @@ import ActivityIcon from "../components/ActivityIcon.jsx";
 import ActivityModal from "../components/ActivityModal.jsx";
 import AuditTrailDrawer from "../components/AuditTrailDrawer.jsx";
 import GanttTrack, { GanttScale, PATTERN_MINUTES } from "../components/Gantt.jsx";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
+import EmployeeAutocomplete from "../../../components/ui/EmployeeAutocomplete.jsx";
 
 const FILTER_KEYS = ["group", "client", "brand", "director", "manager", "supervisor", "team_manager", "search"];
 const LEVEL_PARAMS = [
@@ -25,6 +27,8 @@ const ZOOMS = [
 ];
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const FILTERS_PIN_KEY = "metamorph.iex.filters.pinned";
+const PAGE_SIZES = [25, 50, 100, 200];
+const DEFAULT_PAGE_SIZE = 50;
 const TOOL_CATEGORY_KEY = "metamorph.iex.toolbox.category";
 const WIDE = "(min-width: 1101px)";
 
@@ -77,6 +81,10 @@ export default function PlanningPage() {
   const employee = params.get("employee") ?? "";
   const from = params.get("from") ?? "";
   const filters = useMemo(() => Object.fromEntries(FILTER_KEYS.map((k) => [k, params.get(k) ?? ""])), [params]);
+  // Fase 27: la grilla de grupo no se consulta sin filtros y carga los agentes por páginas.
+  const hasFilter = FILTER_KEYS.some((k) => filters[k]);
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const pageSize = PAGE_SIZES.includes(Number(params.get("size"))) ? Number(params.get("size")) : DEFAULT_PAGE_SIZE;
 
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(null);
@@ -106,6 +114,8 @@ export default function PlanningPage() {
     (changes) => {
       setParams((p) => {
         const next = { ...Object.fromEntries(p), ...changes };
+        // Cambiar un filtro (o el tamaño de página) vuelve a la primera página.
+        if (!("page" in changes) && Object.keys(changes).some((k) => FILTER_KEYS.includes(k) || k === "size")) delete next.page;
         return Object.fromEntries(Object.entries(next).filter(([, v]) => v));
       }, { replace: true });
     },
@@ -116,18 +126,13 @@ export default function PlanningPage() {
     const controller = new AbortController();
     adhApi
       .gridFilters({ signal: controller.signal })
-      .then((data) => {
-        setMeta(data);
-        if (!params.get("group") && !params.get("employee") && data.management_units[0]) {
-          setParams((p) => ({ ...Object.fromEntries(p), group: data.management_units[0].code }), { replace: true });
-        }
-      })
+      .then(setMeta)
       .catch((err) => err.name !== "AbortError" && setMetaError(err.message));
     return () => controller.abort();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    if (view === "agent" && !employee) {
+    if ((view === "agent" && !employee) || (view === "grid" && !hasFilter)) {
       setState({ loading: false, data: null, error: null });
       return undefined;
     }
@@ -136,12 +141,12 @@ export default function PlanningPage() {
     const call =
       view === "agent"
         ? adhApi.agentHistory({ employee, from }, { signal: controller.signal })
-        : adhApi.grid({ date, ...filters }, { signal: controller.signal });
+        : adhApi.grid({ date, ...filters, page, page_size: pageSize }, { signal: controller.signal });
     call
       .then((data) => setState({ loading: false, data, error: null }))
       .catch((err) => err.name !== "AbortError" && setState({ loading: false, data: null, error: err.message }));
     return () => controller.abort();
-  }, [view, date, employee, from, filters, reloadKey]);
+  }, [view, date, employee, from, filters, hasFilter, page, pageSize, reloadKey]);
 
   const data = state.data;
   const canManage = Boolean(data?.can_manage ?? meta?.can_manage);
@@ -267,7 +272,7 @@ export default function PlanningPage() {
             </select>
           </label>
           {grid && <GridSettings grid={grid} group={filters.group} canManage={canManage} onSaved={(b) => { setNotice({ ok: true, text: b.feedback }); setReloadKey((k) => k + 1); }} onError={fail} />}
-          {canManage && view === "grid" && (
+          {canManage && view === "grid" && hasFilter && (
             <button type="button" className="button button--ghost button--sm" onClick={reconcile} disabled={busy}
               title="Inserta el Lateness de quien inició sesión tarde y marca Unjustified Absence (con Legal Benefit Lunch) a quien no se presentó">
               Conciliar asistencia
@@ -308,6 +313,10 @@ export default function PlanningPage() {
           {state.error && <p className="error-box">{state.error}</p>}
           {(state.loading || busy) && <p className="muted iex__loading">{busy ? "Guardando y recalculando adherencia…" : "Cargando…"}</p>}
 
+          {view === "grid" && !hasFilter && <FiltersRequired meta={meta} update={update} />}
+          {view === "grid" && hasFilter && data?.paging && data.paging.count > 0 && (
+            <GridPager paging={data.paging} shown={data.rows.length} update={update} />
+          )}
           {view === "grid" && data?.rows && (
             <GroupGrid data={data} date={date} trackProps={trackProps} canManage={canManage} snapLabel={snapLabel} audit={audit}
               onAudit={(r) => setAudit({ employee_code: r.employee_code, full_name: r.full_name, date })}
@@ -479,6 +488,66 @@ const RAIL = [
   { id: "search", label: "Buscar agente", keys: ["search"], d: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5" },
 ];
 
+/* ---------------------------------------------------------------------------- carga diferida (Fase 27) -- */
+/** Estado inicial de la grilla de grupo: no se consulta nada hasta elegir al menos un filtro. */
+function FiltersRequired({ meta, update }) {
+  const units = meta?.management_units ?? [];
+  return (
+    <div className="iex-empty" role="status">
+      <h2 className="iex-empty__title">Elija qué agentes quiere ver</h2>
+      <p className="muted">
+        Para no cargar la plantilla completa de una sola vez, la grilla se consulta después de aplicar al menos un filtro en el
+        panel izquierdo: Management Unit, cuenta, cadena de mando (Director, Manager, Supervisor o Team Manager) o la búsqueda
+        por nombre. Los agentes se cargan por páginas.
+      </p>
+      {units.length > 0 && (
+        <div className="iex-empty__units">
+          <span className="muted small">Acceso rápido por Management Unit:</span>
+          {units.map((g) => (
+            <button key={g.code} type="button" className="button button--ghost button--sm" onClick={() => update({ group: g.code })}>
+              {g.name} <span className="muted small">({g.agents})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Paginación de los agentes de la grilla (el servidor evalúa solo la página pedida). */
+function GridPager({ paging, shown, update }) {
+  const from = (paging.page - 1) * paging.page_size + 1;
+  return (
+    <nav className="iex-pager" aria-label="Páginas de agentes">
+      <span className="muted small">
+        Agentes {from}–{from + shown - 1} de {paging.count.toLocaleString("es-SV")}
+      </span>
+      <div className="iex-pager__controls">
+        <button type="button" className="button button--ghost button--sm" disabled={paging.page <= 1} onClick={() => update({ page: String(paging.page - 1) })}>
+          ‹ Anterior
+        </button>
+        <span className="small">
+          Página {paging.page} de {paging.pages}
+        </span>
+        <button type="button" className="button button--ghost button--sm" disabled={paging.page >= paging.pages}
+          onClick={() => update({ page: String(paging.page + 1) })}>
+          Siguiente ›
+        </button>
+        <label className="iex__opt">
+          <span className="muted small">Por página</span>
+          <select value={paging.page_size} onChange={(e) => update({ size: e.target.value === String(DEFAULT_PAGE_SIZE) ? "" : e.target.value })}>
+            {(paging.page_sizes ?? PAGE_SIZES).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </nav>
+  );
+}
+
 function FilterPanel({ meta, filters, view, employee, update, pinned, onTogglePin }) {
   const leaders = useMemo(() => meta?.leaders ?? [], [meta]);
   const brands = meta?.clients.find((c) => c.code === filters.client)?.brands ?? [];
@@ -555,11 +624,11 @@ function FilterPanel({ meta, filters, view, employee, update, pinned, onTogglePi
         <div className="iex-filters__content">
           {view === "agent" && (
             <div className="iex-filters__section">
-              <label className="field">
-                <span className="field__label">Agente (ID corporativo)</span>
-                <input type="search" key={employee} defaultValue={employee} placeholder="SV-2026-000001-7"
-                  onKeyDown={(e) => e.key === "Enter" && update({ employee: e.currentTarget.value.trim().toUpperCase(), from: "" })} />
-              </label>
+              <div className="field">
+                <label className="field__label" htmlFor="iex-agent">Agente</label>
+                <EmployeeAutocomplete inputId="iex-agent" scope="acd" value={employee} onChange={(code) => update({ employee: code, from: "" })}
+                  placeholder="Nombre o ID del agente…" />
+              </div>
             </div>
           )}
           <div className="iex-filters__section">
@@ -668,7 +737,7 @@ function GroupGrid({ data, date, trackProps, canManage, snapLabel, audit, onAudi
     <>
       <dl className="kpis iex-kpis">
         <div className="kpi">
-          <dt>Agentes</dt>
+          <dt>{data.paging && data.paging.pages > 1 ? "Agentes (esta página)" : "Agentes"}</dt>
           <dd>{data.summary.agents}</dd>
         </div>
         <div className="kpi">
@@ -1022,7 +1091,7 @@ function GridSettings({ grid, group, canManage, onSaved, onError }) {
                 </option>
               ))}
             </select>
-            <small className="field__hint">1 s = sin redondeo: la hora queda donde se suelta.</small>
+            <FieldHint>1 s = sin redondeo: la hora queda donde se suelta.</FieldHint>
           </label>
           <label className="field">
             <span className="field__label">Margen alrededor del turno (h)</span>
@@ -1032,12 +1101,12 @@ function GridSettings({ grid, group, canManage, onSaved, onError }) {
             <span className="field__label">Tolerancia de llegada (s)</span>
             <input type="number" min={0} max={3600} value={form.lateness_grace_seconds} disabled={!canManage}
               onChange={(e) => setForm({ ...form, lateness_grace_seconds: Number(e.target.value) })} />
-            <small className="field__hint">Después de la entrada + tolerancia, el inicio de sesión ACD inserta el Lateness.</small>
+            <FieldHint>Después de la entrada + tolerancia, el inicio de sesión ACD inserta el Lateness.</FieldHint>
           </label>
           <label className="field">
             <span className="field__label">Cambio mayor que exige AP (HH:MM:SS)</span>
             <input value={form.ap_required} disabled={!canManage} placeholder="04:00:00" onChange={(e) => setForm({ ...form, ap_required: e.target.value })} />
-            <small className="field__hint">El día completo y las actividades marcadas siempre exigen AP.</small>
+            <FieldHint>El día completo y las actividades marcadas siempre exigen AP.</FieldHint>
           </label>
           {canManage && (
             <button type="submit" className="button button--sm" disabled={busy}>

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import Pagination from "../../../components/ui/Pagination.jsx";
 import { todayIso } from "../../hcm/lib/format.js";
 import { acdApi } from "../api.js";
+import EmployeeAutocomplete from "../../../components/ui/EmployeeAutocomplete.jsx";
 
 const PAGE_SIZE = 100;
 
@@ -68,7 +69,6 @@ export default function AcdReportPage() {
           <h1 className="page-title">Reporte de estados de agentes</h1>
           <p className="muted page-subtitle">
             Formato de exportación de Genesys Cloud (Agent Status Detail). Duration en milisegundos; horas ISO-8601 con la zona {data?.tz ?? "de la operación"}.
-            Fuente en SQL: <code>dbo.vw_AcdStatusSegment</code>.
           </p>
         </div>
         <a className="button button--ghost" href={acdApi.reportCsvUrl(query)} download>
@@ -127,10 +127,11 @@ export default function AcdReportPage() {
             ))}
           </select>
         </label>
-        <label className="field">
-          <span className="field__label">Employee Id</span>
-          <input type="search" defaultValue={filters.employee} placeholder="SV-2026-000001-7" onKeyDown={(e) => e.key === "Enter" && update({ employee: e.currentTarget.value.trim() })} />
-        </label>
+        <div className="field">
+          <label className="field__label" htmlFor="acd-report-employee">Agente</label>
+          <EmployeeAutocomplete inputId="acd-report-employee" scope="acd" value={filters.employee} onChange={(code) => update({ employee: code })}
+            placeholder="Nombre o ID del agente…" />
+        </div>
       </div>
       {state.error && <p className="error-box">{state.error}</p>}
       {data && data.summary.length > 0 && (

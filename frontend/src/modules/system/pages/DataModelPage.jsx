@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { formatDateTime } from "../../hcm/lib/format.js";
 import { api } from "../../../services/apiClient.js";
 import ErdDiagram from "../components/ErdDiagram.jsx";
+import SqlObjectsPanel from "../components/SqlObjectsPanel.jsx";
 
 const kb = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(2)} GB` : n >= 1024 ? `${(n / 1024).toFixed(1)} MB` : `${n} KB`);
 const int = (n) => Number(n ?? 0).toLocaleString("es-SV");
@@ -20,7 +21,7 @@ const SORTS = {
  */
 export default function DataModelPage() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "erd" ? "erd" : "stats";
+  const tab = ["erd", "objects"].includes(params.get("tab")) ? params.get("tab") : "stats";
   const [stats, setStats] = useState({ loading: true, data: null, error: null });
   const [erd, setErd] = useState({ loading: false, data: null, error: null });
   const [sort, setSort] = useState("rows");
@@ -85,6 +86,10 @@ export default function DataModelPage() {
             onClick={() => setParams({ tab: "erd" }, { replace: true })}>
             Modelo ER
           </button>
+          <button type="button" role="tab" aria-selected={tab === "objects"} className={`button button--sm${tab === "objects" ? "" : " button--ghost"}`}
+            onClick={() => setParams({ tab: "objects" }, { replace: true })}>
+            Vistas, SP y triggers
+          </button>
         </div>
       </header>
       {stats.error && <p className="error-box">{stats.error}</p>}
@@ -127,15 +132,7 @@ export default function DataModelPage() {
               <span key={m.module} title={`${m.module}: ${kb(m.reserved_kb)}`} style={{ width: `${(m.reserved_kb / Math.max(1, data.totals.reserved_kb)) * 100}%`, background: m.color }} />
             ))}
           </div>
-          <p className="data-legend">
-            {data.modules.map((m) => (
-              <button key={m.module} type="button" className="link-button" onClick={() => setModule(module === m.module ? "" : m.module)}
-                style={{ fontWeight: module === m.module ? 700 : 400 }}>
-                <i style={{ background: m.color }} />
-                {m.module} · {m.tables} tablas · {int(m.rows)} filas
-              </button>
-            ))}
-          </p>
+          {tab !== "objects" && (
           <div className="erd__toolbar">
             <label className="field">
               <span className="field__label">Módulo</span>
@@ -143,7 +140,7 @@ export default function DataModelPage() {
                 <option value="">Todos</option>
                 {data.modules.map((m) => (
                   <option key={m.module} value={m.module}>
-                    {m.module}
+                    {m.module} · {m.tables} tablas · {int(m.rows)} filas
                   </option>
                 ))}
               </select>
@@ -178,8 +175,11 @@ export default function DataModelPage() {
               </>
             )}
           </div>
+          )}
         </>
       )}
+
+      {tab === "objects" && <SqlObjectsPanel colors={colors} />}
 
       {tab === "stats" && data && (
         <div className="table-wrap">

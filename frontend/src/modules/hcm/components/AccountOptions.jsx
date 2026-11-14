@@ -1,6 +1,7 @@
 import { useAuth } from "../../../auth/AuthContext.jsx";
 import { useRoles } from "../hooks/useRoles.js";
 import AccountSearch from "./AccountSearch.jsx";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 /**
  * Bloque del alta de empleado: «¿Desea crear un perfil de usuario Metamorph vinculado a este empleado?».
@@ -83,7 +84,7 @@ export default function AccountOptions({ value, onChange, preview, serverErrors 
             {roleError ? (
               <small className="field__error">{roleError}</small>
             ) : (
-              <small className="field__hint">Define qué módulos verá. Solo se listan los roles que usted puede otorgar.</small>
+              <FieldHint>Define qué módulos verá. Solo se listan los roles que usted puede otorgar.</FieldHint>
             )}
           </div>
           <div className="field">
@@ -107,11 +108,11 @@ export default function AccountOptions({ value, onChange, preview, serverErrors 
                 {usernameError}
               </small>
             ) : (
-              <small className="field__hint">
+              <FieldHint>
                 {preview?.username && !preview.linked
                   ? `Si lo deja vacío se usará «${preview.username}».`
                   : "Vacío = se genera nombre.apellido (use «Validar sin guardar» para verlo)."}
-              </small>
+              </FieldHint>
             )}
           </div>
         </div>

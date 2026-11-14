@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { acdApi } from "../api.js";
+import EmployeeAutocomplete from "../../../components/ui/EmployeeAutocomplete.jsx";
 
 /**
  * Grupos / perfiles de agentes (WFM): división, auxiliares permitidos y agentes del grupo. Un auxiliar «restringido»
@@ -218,14 +219,15 @@ function GroupDetail({ code, catalogs, canManage, onDone, onError }) {
           className="filters"
           onSubmit={(e) => {
             e.preventDefault();
-            acdApi.addMember(code, memberCode.trim()).then((b) => { setMemberCode(""); onDone(b); }).catch(onError);
+            if (!memberCode) return;
+            acdApi.addMember(code, memberCode).then((b) => { setMemberCode(""); onDone(b); }).catch(onError);
           }}
         >
-          <label className="field">
-            <span className="field__label">ID corporativo</span>
-            <input required value={memberCode} onChange={(e) => setMemberCode(e.target.value.toUpperCase())} placeholder="SV-2026-000001-7" />
-          </label>
-          <button type="submit" className="button button--sm">Asignar al grupo</button>
+          <div className="field">
+            <label className="field__label" htmlFor={`acd-member-${code}`}>Colaborador</label>
+            <EmployeeAutocomplete inputId={`acd-member-${code}`} value={memberCode} onChange={(c) => setMemberCode(c)} />
+          </div>
+          <button type="submit" className="button button--sm" disabled={!memberCode}>Asignar al grupo</button>
           <span className="muted small">Si el agente estaba en otro grupo, se mueve a este (sin sesión abierta).</span>
         </form>
       )}

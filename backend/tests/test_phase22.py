@@ -69,7 +69,8 @@ def _weekdays(windows, lo=None, hi=None):
 # ================================================================== retiro del mock de asistencias
 def test_wfm_mock_schema_was_dropped():
     with connection.cursor() as c:
-        c.execute("SELECT SCHEMA_ID(N'wfm'), OBJECT_ID(N'wfm.Attendance'), OBJECT_ID(N'wfm.catDowntimeType')")
+        # Fase 25: el esquema wfm se reutiliza para el módulo WFM real; las tablas del mock siguen sin existir.
+        c.execute("SELECT OBJECT_ID(N'wfm.Attendance'), OBJECT_ID(N'wfm.catDowntimeType'), OBJECT_ID(N'wfm.IngestionBatch')")
         assert c.fetchone() == (None, None, None)
 
 
@@ -293,11 +294,11 @@ def test_appearance_data_stats_and_erd(api, admin_user, hr_user):
 
     stats = api.get("/api/v1/system/data/stats/").json()
     names = {t["name"]: t for t in stats["tables"]}
-    assert "hcm.Employee" in names and "dbo.pay_payroll_line" in names and not any(n.startswith("wfm.") for n in names)
-    assert names["hcm.Employee"]["module"] == "Capital Humano" and names["dbo.pa_action"]["fk_out"] >= 1
+    assert "hcm.Employee" in names and "fin.pay_payroll_line" in names and "wfm.Attendance" not in names
+    assert names["hcm.Employee"]["module"] == "Capital Humano" and names["pa.pa_action"]["fk_out"] >= 1
     assert stats["totals"]["procedures"] >= 2 and stats["totals"]["tables"] == len(stats["tables"])
     erd = api.get("/api/v1/system/data/erd/").json()
-    rel = [x for x in erd["relations"] if x["from"] == "dbo.pa_action" and x["to"] == "hcm.Employee"]
+    rel = [x for x in erd["relations"] if x["from"] == "pa.pa_action" and x["to"] == "hcm.Employee"]
     assert rel and rel[0]["columns"][0] == ["employee_id", "EmployeeId"]
     emp_t = next(t for t in erd["tables"] if t["name"] == "hcm.Employee")
     assert any(c["pk"] and c["name"] == "EmployeeId" for c in emp_t["columns"])

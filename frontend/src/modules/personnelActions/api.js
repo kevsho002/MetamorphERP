@@ -21,4 +21,13 @@ export const actionsApi = {
   lifecycle: (code, options) => api.get(`/personnel-actions/employees/${enc(code)}/lifecycle/`, options),
   roleMatrix: (options) => api.get("/personnel-actions/role-matrix/", options),
   updateRoles: (code, payload) => api.patch(`/personnel-actions/role-matrix/${enc(code)}/`, payload),
+  // Fase 24: adjuntos (evidencias) de la AP — imágenes, PDF y documentos de Office
+  uploadAttachment: (folio, { file, category, description }) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (category) form.append("category", category);
+    if (description) form.append("description", description);
+    return api.post(`/personnel-actions/${enc(folio)}/attachments/`, form);
+  },
+  removeAttachment: (id, reason) => api.post(`/personnel-actions/attachments/${id}/remove/`, { reason }),
 };

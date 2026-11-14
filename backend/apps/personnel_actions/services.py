@@ -722,6 +722,7 @@ def action_dict(action: PersonnelAction, user, *, detail: bool = False) -> dict:
         "applied_at": action.applied_at, "cancel_reason": action.cancel_reason,
         "next_step": {"order": nxt.order, "label": nxt.label, "role": nxt.role, "role_label": nxt.get_role_display()} if nxt else None,
         "steps_total": len(steps), "steps_signed": len(signatures),
+        "attachments_count": sum(1 for f in action.attachments.all() if f.removed_at is None),
     }
     if not detail:
         return body
@@ -753,6 +754,9 @@ def action_dict(action: PersonnelAction, user, *, detail: bool = False) -> dict:
     body["sign_block_reason"] = sign_block_reason(action, user) if action.status == Status.PENDING else None
     body["can_sign"] = action.status == Status.PENDING and body["sign_block_reason"] is None
     body["can_view_employee"] = "hcm.view" in perms
+    from apps.personnel_actions import attachments  # Fase 24: evidencias y bitácora de auditoría (pestañas de la AP)
+
+    body.update(attachments.dossier(action, user))
     return body
 
 

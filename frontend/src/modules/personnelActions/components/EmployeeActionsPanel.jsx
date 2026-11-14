@@ -52,6 +52,11 @@ export default function EmployeeActionsPanel({ employee }) {
                   <Link to={`/personnel-actions/${a.folio}`}>
                     <code>{a.folio}</code>
                   </Link>
+                  {a.attachments_count > 0 && (
+                    <Link to={`/personnel-actions/${a.folio}?tab=evidence`} className="badge badge--muted" title="Evidencias adjuntas (Fase 24)">
+                      {a.attachments_count} adj.
+                    </Link>
+                  )}
                 </th>
                 <td>
                   {a.action_type_name} {a.is_initial && <span className="badge badge--info">Fundacional</span>}

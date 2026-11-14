@@ -8,13 +8,14 @@
                           Lateness.
 
 SQL Server (migración 0002): FKs a core.catCountry y hcm.Employee; TR_hol_holiday_locked (50097) impide cambiar la fecha
-o el país de un feriado (o borrarlo) cuando ya generó Holiday Segments; vista dbo.vw_HolidaySegment.
+o el país de un feriado (o borrarlo) cuando ya generó Holiday Segments; vista wfm.vw_HolidaySegment.
 """
 
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.common.models import Country
 from apps.hcm.models import Employee
 from apps.scheduling.fields import WallClockDateTimeField
@@ -41,7 +42,7 @@ class Holiday(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
 
     class Meta:
-        db_table = "hol_holiday"
+        db_table = sql_table("wfm", "hol_holiday")
         ordering = ["date"]
         verbose_name = "feriado"
         verbose_name_plural = "calendario de feriados"
@@ -70,7 +71,7 @@ class HolidaySegment(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "hol_holiday_segment"
+        db_table = sql_table("wfm", "hol_holiday_segment")
         ordering = ["shift_date", "employee_id"]
         verbose_name = "Holiday Segment"
         verbose_name_plural = "Holiday Segments (feriados laborados)"

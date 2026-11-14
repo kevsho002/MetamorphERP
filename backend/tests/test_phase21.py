@@ -60,7 +60,7 @@ def test_suspension_freezes_tenure_and_reactivates(api, hr_user, admin_user, mak
     later = lifecycle.tenure(emp, today + timedelta(days=10))
     assert later["suspended_days"] == 5 and not later["frozen"]
     with pytest.raises(DatabaseError, match="50094"), connection.cursor() as cursor:
-        cursor.execute("DELETE FROM dbo.pa_employment_event WHERE employee_id = %s", [emp.pk])
+        cursor.execute("DELETE FROM pa.pa_employment_event WHERE employee_id = %s", [emp.pk])
 
 
 def test_termination_rehire_alert_and_tenure_restart(api, hr_user, admin_user, wfm_user, make_employee):
@@ -161,7 +161,7 @@ def test_holiday_segments_double_pay_without_absences(api, hr_user, wfm_user, ma
     assert any(h["name"] == "Navidad" for h in body["results"])  # feriados legales sembrados
     assert api.delete(f"/api/v1/holidays/{hol.pk}/").status_code == 409  # ya generó Holiday Segments
     with pytest.raises(DatabaseError, match="50097"), connection.cursor() as cursor:
-        cursor.execute("UPDATE dbo.hol_holiday SET date = '2026-10-08' WHERE id = %s", [hol.pk])
+        cursor.execute("UPDATE wfm.hol_holiday SET date = '2026-10-08' WHERE id = %s", [hol.pk])
 
 
 # ================================================================== pre-cierre: corridas, boletas preliminares y excepciones
@@ -250,7 +250,7 @@ def test_settlement_dismissal_batch_and_checks(api, hr_user, make_employee):
     assert Settlement.objects.get(pk=sid).status == "PAID"
     # SQL Server: el contenido de una liquidación aprobada / pagada no cambia (el error aborta la transacción: va al final).
     with pytest.raises(DatabaseError, match="50095"), connection.cursor() as cursor:
-        cursor.execute("UPDATE dbo.pay_settlement SET gross = gross + 1, net = net + 1 WHERE id = %s", [sid])
+        cursor.execute("UPDATE fin.pay_settlement SET gross = gross + 1, net = net + 1 WHERE id = %s", [sid])
 
 
 def test_settlement_rules_and_amount_in_words(make_employee):
@@ -265,10 +265,10 @@ def test_settlement_rules_and_amount_in_words(make_employee):
     assert settlements.amount_in_words(D("100")).startswith("CIEN 00/100")
     # Vista de antigüedad para reportería (desde el ingreso vigente hasta la terminación, sin suspensiones).
     with connection.cursor() as cursor:
-        cursor.execute("SELECT TenureDays, SuspendedDays FROM dbo.vw_EmployeeTenure WHERE EmployeeId = %s", [emp.pk])
+        cursor.execute("SELECT TenureDays, SuspendedDays FROM hcm.vw_EmployeeTenure WHERE EmployeeId = %s", [emp.pk])
         assert cursor.fetchone() == ((date(2026, 11, 1) - date(2025, 6, 1)).days + 1, 0)
     assert s.service_days == (date(2026, 11, 1) - date(2025, 6, 1)).days + 1
     # Una liquidación en borrador no entra a un lote (SQL 50096).
     batch = SettlementBatch.objects.create(code="LT-P21-TEST", country_id=emp.country_id, payment_date=date(2026, 11, 20))
     with pytest.raises(DatabaseError, match="50096"), connection.cursor() as cursor:
-        cursor.execute("UPDATE dbo.pay_settlement SET batch_id = %s WHERE id = %s", [batch.pk, s.pk])
+        cursor.execute("UPDATE fin.pay_settlement SET batch_id = %s WHERE id = %s", [batch.pk, s.pk])

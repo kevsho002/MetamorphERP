@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "apps.personnel_actions",
     "apps.acd",
     "apps.adherence",
+    "apps.communications",  # Fase 25: comunicados corporativos y acuse de recibo
     "apps.health",
     "apps.web",
 ]
@@ -115,7 +116,8 @@ _db_trusted = env_bool("DB_TRUSTED_CONNECTION", True)
 
 DATABASES = {
     "default": {
-        "ENGINE": "mssql",
+        # Fase 25: mssql-django + introspección por esquema (tablas del ERP en esquemas por módulo).
+        "ENGINE": "apps.common.db",
         "NAME": env("DB_NAME", "MetamorphERP"),
         "HOST": env("DB_SERVER", "localhost"),
         "PORT": env("DB_PORT", ""),
@@ -136,6 +138,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ------------------------------------------------------------------ seguridad
 AUTH_USER_MODEL = "accounts.CustomUser"
+# Fase 25: ModelBackend + bloqueo de cuentas (intentos fallidos / bloqueo administrativo).
+AUTHENTICATION_BACKENDS = ["apps.accounts.backends.LockAwareModelBackend"]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -1,3 +1,5 @@
+import FieldHint from "../../../components/ui/FieldHint.jsx";
+
 /**
  * Campo del roster dibujado a partir de su definición (GET /roster/attributes/):
  * texto, número, fecha, sí/no, lista de opciones o elemento de una dimensión
@@ -98,9 +100,9 @@ export default function RosterField({ attribute, value, onChange, options = [], 
         </small>
       ) : (
         hint && (
-          <small id={`${id}-hint`} className="field__hint">
+          <FieldHint id={`${id}-hint`}>
             {hint}
-          </small>
+          </FieldHint>
         )
       )}
     </div>

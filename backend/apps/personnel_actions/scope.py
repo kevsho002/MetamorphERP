@@ -1,7 +1,7 @@
 """Fase 23 — Alcance jerárquico de las Acciones de Personal: a quién puede elaborarle AP cada usuario.
 
-* Líder en la cadena de mando (dbo.ops_leader): ÚNICAMENTE los colaboradores bajo su jerarquía directa o indirecta
-  (función de SQL Server dbo.fn_EmployeesUnderLeader: líderes que le reportan y agentes de sus Team Managers en el roster
+* Líder en la cadena de mando (org.ops_leader): ÚNICAMENTE los colaboradores bajo su jerarquía directa o indirecta
+  (función de SQL Server org.fn_EmployeesUnderLeader: líderes que le reportan y agentes de sus Team Managers en el roster
   vigente). Nunca a sí mismo.
 * Administrador: toda la organización.
 * Áreas de soporte sin equipo a cargo (por defecto Generalista de RRHH y WFM): toda la organización. Se ajusta en
@@ -48,7 +48,7 @@ class Scope:
 def under_leader(employee_id: int, on: date | None = None) -> dict[int, str]:
     on = on or timezone.localdate()
     with connection.cursor() as c:
-        c.execute("SELECT employee_id, relation FROM dbo.fn_EmployeesUnderLeader(%s, %s)", [employee_id, on])
+        c.execute("SELECT employee_id, relation FROM org.fn_EmployeesUnderLeader(%s, %s)", [employee_id, on])
         return {int(e): r for e, r in c.fetchall()}
 
 

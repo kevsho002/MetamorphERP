@@ -140,7 +140,7 @@ export default function GeneralIdsReportPage() {
           <h1 className="page-title">General IDs</h1>
           <p className="muted page-subtitle">
             Identificadores de los empleados en herramientas externas (ACD, planilla…) vigentes en un rango: las llaves
-            para cruzar reportes. En SQL: <code>dbo.vw_EmployeeGeneralId</code>.
+            para cruzar reportes.
           </p>
         </div>
         <a className="button button--ghost" href={generalIdsApi.reportCsvUrl(query)} download>

@@ -309,7 +309,7 @@ class _LeaderView(APIView):
         if isinstance(exc, hierarchy.HierarchyError):
             return Response({"detail": str(exc), "errors": exc.errors, "code": "invalid"}, status=status.HTTP_400_BAD_REQUEST)
         if isinstance(exc, DatabaseError) and "50080" in str(exc):
-            return Response({"detail": "SQL Server rechazó el cambio: cada líder reporta a un líder activo del nivel inmediato "
+            return Response({"detail": "El sistema rechazó el cambio: cada líder reporta a un líder activo del nivel inmediato "
                                        "superior y no se desactiva con subordinados activos.", "code": "sql_50080"},
                             status=status.HTTP_409_CONFLICT)
         return super().handle_exception(exc)

@@ -395,11 +395,10 @@ def test_admin_pages_render(admin_client_su, make_employee, countries):
         "/admin/employees/importbatchrow/",
         "/admin/hcm/employee/",
         f"/admin/hcm/employee/{employee.pk}/change/",
-        "/admin/accounts/customuser/",
-        "/admin/accounts/customuser/add/",
+        "/admin/accounts/customuser/add/",  # Fase 25: las cuentas se gestionan en /admin/, pero no se crean ahí
         "/admin/auth/group/",
     ]:
-        assert admin_client_su.get(url).status_code == 404, url
+        assert admin_client_su.get(url).status_code in (403, 404), url
 
 
 def test_admin_rejects_invalid_template_json(admin_client_su, countries):

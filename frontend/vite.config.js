@@ -9,6 +9,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: true },
+      // Fase 25: enlaces al panel de Django (Usuarios, sesiones) desde Estado del sistema.
+      "/admin": { target: "http://localhost:8000", changeOrigin: true },
+      "/static": { target: "http://localhost:8000", changeOrigin: true },
     },
   },
   build: { outDir: "dist", sourcemap: true },

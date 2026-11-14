@@ -219,12 +219,12 @@ def test_report_detail_and_stored_results(api, wfm_user, employee_user, agent_em
     day = AdherenceDay.objects.get(employee=agent_emp, shift_date=MON)
     assert float(day.adherence_pct) == 93.52 and Deviation.objects.filter(day=day).count() == 2
     with connection.cursor() as cursor:
-        cursor.execute("SELECT AdherencePct, UnpaidExcessLoginMinutes, PayPeriod FROM dbo.vw_AdhAdherenceDay WHERE EmployeeId = %s", [code])
+        cursor.execute("SELECT AdherencePct, UnpaidExcessLoginMinutes, PayPeriod FROM wfm.vw_AdhAdherenceDay WHERE EmployeeId = %s", [code])
         pct, excess, period = cursor.fetchone()
         assert float(pct) == 93.52 and float(excess) == 0 and period
-        cursor.execute("SELECT DeviationLabel, ScheduledActivity, ActualPrimaryStatus FROM dbo.vw_AdhDeviation WHERE EmployeeId = %s ORDER BY StartLocal", [code])
+        cursor.execute("SELECT DeviationLabel, ScheduledActivity, ActualPrimaryStatus FROM wfm.vw_AdhDeviation WHERE EmployeeId = %s ORDER BY StartLocal", [code])
         assert cursor.fetchall() == [("Out of Adherence", "PRODUCTION", "Break"), ("Out of Adherence", "PRODUCTION", None)]
-        cursor.execute("SELECT COUNT(*) FROM dbo.vw_AdhScheduleSegment WHERE EmployeeId = %s", [code])
+        cursor.execute("SELECT COUNT(*) FROM wfm.vw_AdhScheduleSegment WHERE EmployeeId = %s", [code])
         assert cursor.fetchone()[0] == 2
 
     api.force_login(employee_user)

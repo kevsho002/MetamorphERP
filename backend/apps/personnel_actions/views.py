@@ -9,14 +9,21 @@ POST  /personnel-actions/{folio}/submit/                enviar a aprobación (se
 POST  /personnel-actions/{folio}/sign/                  {decision: APPROVED|REJECTED, comment}
 POST  /personnel-actions/{folio}/cancel/                {reason}
 GET   /personnel-actions/employees/{ID}/                APs del empleado + horario vigente
+POST  /personnel-actions/{folio}/attachments/           Fase 24: adjuntar (multipart: file, category, description)
+GET   /personnel-actions/attachments/{id}/content/      ver (?download=1 para descargar)
+POST  /personnel-actions/attachments/{id}/remove/       {reason} retirar (nunca se borra)
 GET   /personnel-actions/missing-initial/               empleados activos sin Primera AP de horario
 POST  /personnel-actions/schedule-preview/              {schedule, country | employee_code, effective_date}
 """
 
+from urllib.parse import quote
+
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -25,8 +32,8 @@ from apps.accounts.permissions import HasActionPermission, PasswordChangeNotRequ
 from apps.accounts.roles import Perm, Role
 from apps.common.models import Country
 from apps.hcm.models import Employee
-from apps.personnel_actions import services
-from apps.personnel_actions.models import ActionType, PersonnelAction, Status
+from apps.personnel_actions import attachments, services
+from apps.personnel_actions.models import ActionAttachment, ActionType, PersonnelAction, Status
 from apps.scheduling import engine
 from apps.scheduling import services as sch
 from apps.scheduling.models import ScheduleAssignment
@@ -51,7 +58,7 @@ class _View(APIView):
 def _queryset(user):
     return PersonnelAction.objects.filter(action_type_id__in=services.visible_type_ids(user)).select_related(
         "action_type", "employee__country", "created_by"
-    ).prefetch_related("action_type__steps", "signatures")
+    ).prefetch_related("action_type__steps", "signatures", "attachments")
 
 
 def _get(user, folio: str, *, lock=False) -> PersonnelAction:
@@ -195,6 +202,73 @@ class TransitionView(_View):
             nxt = services.next_step(action)
             feedback += f" Siguiente firma: {nxt.label} ({nxt.get_role_display()})." if nxt else ""
         return Response({"feedback": feedback, "action": services.action_dict(action, request.user, detail=True)})
+
+
+# ================================================================ Fase 24: adjuntos (evidencias) de la AP
+def _attachment_error(exc: attachments.AttachmentError) -> Response:
+    return Response({"detail": exc.message, "code": exc.code}, status=exc.status)
+
+
+def _attachment(user, pk: int) -> ActionAttachment:
+    att = get_object_or_404(ActionAttachment.objects.select_related("action__action_type", "action__employee"), pk=pk)
+    if att.action.action_type_id not in services.visible_type_ids(user):
+        raise ActionAttachment.DoesNotExist
+    return att
+
+
+class ActionAttachmentsView(_View):
+    method_permissions = {"post": Perm.ACTIONS_VIEW}
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request, folio: str):
+        action = _get(request.user, folio, lock=True)
+        upload = request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": "Seleccione el archivo a adjuntar.", "code": "file_required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            att = attachments.add(action, upload, user=request.user, category=request.data.get("category", ""),
+                                  description=request.data.get("description", ""), request=request)
+        except attachments.AttachmentError as exc:
+            return _attachment_error(exc)
+        action = _get(request.user, folio)
+        return Response({"feedback": f"«{att.original_name}» adjuntado a la AP {action.folio}.",
+                         "action": services.action_dict(action, request.user, detail=True)}, status=status.HTTP_201_CREATED)
+
+
+class AttachmentContentView(_View):
+    method_permissions = {"get": Perm.ACTIONS_VIEW}
+
+    def get(self, request, pk: int):
+        try:
+            att = _attachment(request.user, pk)
+        except ActionAttachment.DoesNotExist:
+            return Response({"detail": "El adjunto no existe o su rol no puede verlo."}, status=status.HTTP_404_NOT_FOUND)
+        inline = att.kind in ("IMAGE", "PDF") and request.query_params.get("download") not in ("1", "true")
+        response = FileResponse(attachments.open_file(att), content_type=att.mime_type)
+        response["Content-Disposition"] = f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(att.original_name)}"
+        response["X-Content-Type-Options"] = "nosniff"
+        if att.kind == "IMAGE":  # el visor de PDF del navegador no funciona dentro de un documento aislado (sandbox)
+            response["Content-Security-Policy"] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+
+class AttachmentRemoveView(_View):
+    method_permissions = {"post": Perm.ACTIONS_VIEW}
+
+    def post(self, request, pk: int):
+        try:
+            att = _attachment(request.user, pk)
+        except ActionAttachment.DoesNotExist:
+            return Response({"detail": "El adjunto no existe o su rol no puede verlo."}, status=status.HTTP_404_NOT_FOUND)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            attachments.remove(att, user=request.user, reason=str(data.get("reason") or ""), request=request)
+        except attachments.AttachmentError as exc:
+            return _attachment_error(exc)
+        action = _get(request.user, att.action.folio)
+        return Response({"feedback": f"«{att.original_name}» retirado de la AP {action.folio}.",
+                         "action": services.action_dict(action, request.user, detail=True)})
 
 
 class EmployeePickerView(_View):

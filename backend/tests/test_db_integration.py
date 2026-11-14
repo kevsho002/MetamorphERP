@@ -105,7 +105,7 @@ def test_user_employee_fk_is_enforced_by_database(admin_user):
     with pytest.raises(IntegrityError), transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE dbo.accounts_customuser SET employee_code = %s WHERE id = %s",
+                "UPDATE sec.accounts_customuser SET employee_code = %s WHERE id = %s",
                 ["SV-2099-999999-0", admin_user.pk],
             )
 
@@ -113,7 +113,7 @@ def test_user_employee_fk_is_enforced_by_database(admin_user):
 def test_user_cost_center_fk_is_enforced_by_database(admin_user):
     with pytest.raises(IntegrityError), transaction.atomic():
         with connection.cursor() as cursor:
-            cursor.execute("UPDATE dbo.accounts_customuser SET cost_center_id = -1 WHERE id = %s", [admin_user.pk])
+            cursor.execute("UPDATE sec.accounts_customuser SET cost_center_id = -1 WHERE id = %s", [admin_user.pk])
 
 
 def test_cost_centers_seeded_per_country(cost_center, countries):

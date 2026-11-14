@@ -18,6 +18,17 @@ from apps.scheduling.models import AttendanceCutoff, NightRule, PayPeriod, Sched
 from apps.system.models import AuditEvent
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _cutoff_equals_period(db):
+    """Los escenarios de la Fase 20 se escribieron con la asistencia del 1 al 15. Desde la Fase 24 el ciclo
+    predeterminado cuenta del 25 al 9 / 10 al 24 (ver test_phase24): aquí se vuelve al corte igual al periodo."""
+    from apps.scheduling.models import PayCycle
+    from apps.scheduling.services import realign_cutoffs
+
+    PayCycle.objects.filter(code="SV_QUINCENAL").update(cutoff_start_day=None, cutoff_first_end_day=None)
+    realign_cutoffs(PayCycle.objects.get(code="SV_QUINCENAL"), audit=False)
 P = "/api/v1/payroll"
 DAY = {"days": {d: {"start": "08:00", "end": "17:00", "lunch_minutes": 60} for d in ("mon", "tue", "wed", "thu", "fri")}}
 _FOLIO = iter(range(920001, 920999))
@@ -190,7 +201,7 @@ def test_payroll_from_web_timer_aps_segments_and_adherence(api, hr_user, make_em
     assert D(str(d["paid_days"])) == D("9.06") and d["worked_minutes"] == 4350
     # El resultado vive en fin.* (vista para reportería).
     with connection.cursor() as cursor:
-        cursor.execute("SELECT GrossPay, IsssEmployee, AfpEmployee, IncomeTax, NetPay FROM dbo.vw_PayPayrollDetail WHERE EmployeeId = %s",
+        cursor.execute("SELECT GrossPay, IsssEmployee, AfpEmployee, IncomeTax, NetPay FROM fin.vw_PayPayrollDetail WHERE EmployeeId = %s",
                        [emp.employee_code])
         assert cursor.fetchone() == (D("590.25"), D("15.00"), D("42.79"), D("46.97"), D("465.49"))
     # Recalcular es idempotente.
@@ -258,13 +269,13 @@ def test_sql_payroll_status_only_moves_forward(make_employee, cost_center):
 def test_sql_payslip_is_not_deleted(make_employee, cost_center):
     run = _approved(_employee(make_employee, cost_center))
     with pytest.raises(DatabaseError, match="50092"), connection.cursor() as cursor:
-        cursor.execute("DELETE FROM dbo.pay_payslip WHERE payroll_id = %s", [run.payroll_id])
+        cursor.execute("DELETE FROM fin.pay_payslip WHERE payroll_id = %s", [run.payroll_id])
 
 
 def test_sql_payslip_content_is_frozen(make_employee, cost_center):
     run = _approved(_employee(make_employee, cost_center))
     with pytest.raises(DatabaseError, match="50092"), connection.cursor() as cursor:
-        cursor.execute("UPDATE dbo.pay_payslip SET net_pay = net_pay + 1, gross_pay = gross_pay + 1 WHERE payroll_id = %s", [run.payroll_id])
+        cursor.execute("UPDATE fin.pay_payslip SET net_pay = net_pay + 1, gross_pay = gross_pay + 1 WHERE payroll_id = %s", [run.payroll_id])
 
 
 def test_sql_line_requires_approved_payroll_ap(make_employee, cost_center):
@@ -322,7 +333,7 @@ def test_payslip_inventory_print_sign_archive_and_filters(api, hr_user, make_emp
     detail = api.get(f"{P}/payslips/{ops['id']}/").json()
     assert detail["verified"] is True and detail["content"]["employee"]["code"] == emps[0].employee_code
     with connection.cursor() as cursor:
-        cursor.execute("SELECT PrintStatus, SignatureStatus, IsArchived, Department FROM dbo.vw_PayPayslipInventory WHERE Folio = %s", [ops["folio"]])
+        cursor.execute("SELECT PrintStatus, SignatureStatus, IsArchived, Department FROM fin.vw_PayPayslipInventory WHERE Folio = %s", [ops["folio"]])
         assert cursor.fetchone() == ("Impresa", "Firmada en físico", True, cost_center("SV-OPS").name)
     assert AuditEvent.objects.filter(action__in=["payslip_print", "payslip_sign", "payslip_archive"]).count() == 4
 

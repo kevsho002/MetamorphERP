@@ -29,7 +29,7 @@ from apps.hcm.models import Employee
 from apps.payroll import engine
 from apps.payroll.models import (
     DeductionBracket, DeductionType, PayConcept, Payroll, PayrollDeduction, PayrollDetail, PayrollException, PayrollIteration,
-    PayrollLine, PayrollRun, PayrollSetting, Payslip, PayslipBatch,
+    PayrollDay, PayrollLine, PayrollRun, PayrollSetting, Payslip, PayslipBatch,
 )
 from apps.personnel_actions.models import ActionValue, Effect, PersonnelAction
 from apps.scheduling.models import FAR_FUTURE, AttendanceCutoff, PayCycle, PayPeriod, TimeRecordDay
@@ -146,12 +146,16 @@ def closed_payroll_on(employee: Employee, d: date) -> str | None:
     return run.payroll.payroll_code if run else None
 
 
-def eligible_employees(cycle: PayCycle, period: PayPeriod) -> tuple[list[Employee], list[str]]:
-    """Colaboradores del país y la frecuencia del ciclo contratados en algún día del periodo (Fase 21: también los
-    INACTIVOS por suspensión: el motor por horas no les paga los días suspendidos, pero sí lo laborado antes o después)."""
+def eligible_employees(cycle: PayCycle, period: PayPeriod, windows: list[tuple[date, date]] | None = None) -> tuple[list[Employee], list[str]]:
+    """Colaboradores del país y la frecuencia del ciclo contratados en algún día del periodo o de sus cortes de
+    asistencia (Fase 24: quien se retira el 28 trabajó en el corte del 25 al 9 que se paga en la quincena siguiente).
+    Fase 21: también los INACTIVOS por suspensión (el motor por horas no les paga los días suspendidos)."""
+    windows = windows or [(period.period_start, period.period_end)]
+    lo = min(period.period_start, *(a for a, _ in windows))
+    hi = max(period.period_end, *(b for _, b in windows))
     base = Employee.objects.select_related("country", "cost_center").filter(
-        country_id=cycle.country_id, pay_frequency=cycle.pay_frequency, hire_date__lte=period.period_end,
-    ).filter(Q(termination_date__isnull=True) | Q(termination_date__gte=period.period_start)).order_by("employee_code")
+        country_id=cycle.country_id, pay_frequency=cycle.pay_frequency, hire_date__lte=hi,
+    ).filter(Q(termination_date__isnull=True) | Q(termination_date__gte=lo)).order_by("employee_code")
     employees = list(base)
     inactive = [e.employee_code for e in employees if e.employment_status == Employee.Status.INACTIVE]
     return employees, inactive
@@ -239,6 +243,7 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
     absent: dict[int, set[date]] = defaultdict(set)
     # Fase 22: tiempo justificado por AP con goce (permiso / justificación) para los días sin adherencia guardada.
     leave_paid: dict[tuple[int, date], int] = defaultdict(int)
+    lateness_day: dict[tuple[int, date], int] = defaultdict(int)  # Fase 25: boleta diaria
     ap_with_segments: set[int] = set()
     hol_map = holidays_between({e.country_id for e in employees}, lo, hi)
     country = {e.pk: e.country_id for e in employees}
@@ -251,6 +256,7 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
             absent[s.employee_id].add(s.shift_date)
         elif role == ActivityType.SystemRole.LATENESS:
             inp.lateness_seconds += _seconds(s)
+            lateness_day[(s.employee_id, s.shift_date)] += _seconds(s)
         elif not role and not act.is_paid and act.category != ActivityType.Category.MEAL:
             inp.unpaid_leave_seconds += _seconds(s)
         if s.personnel_action_id:
@@ -264,6 +270,11 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
             leave_paid[(x.employee_id, d)] += int((x.end_at - x.start_at).total_seconds())
     for emp_id, dates in absent.items():
         inputs[emp_id].absence_dates = sorted(dates)
+    for e in employees:  # Fase 25: boleta diaria
+        inputs[e.pk].employed_windows = per_windows[e.pk]
+        inputs[e.pk].suspended_dates = {d for d in suspended.get(e.pk, ()) if lo <= d <= hi}
+    for (emp_id, d), secs in lateness_day.items():
+        inputs[emp_id].days.setdefault(d, {})["lateness"] = secs
 
     # ---- días de vacaciones (AP aprobadas): tiempo programado pagado
     vacation_days: dict[int, set[date]] = defaultdict(set)
@@ -292,15 +303,21 @@ def gather_inputs(employees: list[Employee], period: PayPeriod, windows: list[tu
         w_s, night_s = worked.get((emp_id, d), (0, 0))
         inp.scheduled_seconds += sch_s
         inp.worked_seconds += w_s
+        day = inp.days.setdefault(d, {"scheduled": 0, "worked": 0, "paid": 0, "night": 0, "vacation": 0})
+        day.update(scheduled=sch_s, worked=w_s, lateness=lateness_day.get((emp_id, d), 0))
         if d in vacation_days.get(emp_id, ()):
             inp.paid_seconds += sch_s
             inp.vacation_seconds += sch_s
+            day.update(paid=sch_s, vacation=sch_s)
             continue
         adh = adherence.get((emp_id, d))
         paid = min(adh.paid_valid_seconds, sch_s) if adh is not None else min(w_s + leave_paid.get((emp_id, d), 0), sch_s)
         inp.paid_seconds += paid
         inp.night_seconds += min(night_s, paid)
+        day.update(paid=paid, night=min(night_s, paid))
         seg = hol_segments.get((emp_id, d))
+        if seg is not None:
+            day["holiday"] = seg.holiday.name
         if seg is not None and paid > 0:
             premium = seg.premium_percent if seg.premium_percent is not None else default_premium
             inp.holidays.append(engine.HolidayItem(d, seg.holiday.name, paid, Decimal(premium)))
@@ -422,8 +439,8 @@ def calculate(period: PayPeriod, *, user=None, request=None, trigger: str = "MAN
     run = _run_for(period)
     if run and run.payroll.payroll_status in CLOSED_STATUSES:
         raise PayrollError(f"La planilla {run.payroll.payroll_code} ya está cerrada: no se recalcula.", "closed")
-    employees, skipped = eligible_employees(cycle, period)
     windows = windows_for(period)
+    employees, skipped = eligible_employees(cycle, period, windows)
     if run:
         payroll = run.payroll
         _clear(payroll)
@@ -439,6 +456,10 @@ def calculate(period: PayPeriod, *, user=None, request=None, trigger: str = "MAN
     rules = legal_rules(cycle.country_id, period.period_end, cycle.pay_frequency)
     concepts = concept_map()
     concept_ids = dict(PayConcept.objects.values_list("code", "id"))
+    cutoff_rows = list(period.cutoffs.order_by("cutoff_start"))
+
+    def cutoff_of(d: date) -> str:
+        return next((c.code for c in cutoff_rows if c.cutoff_start <= d <= c.cutoff_end), "")[:40]
     warnings: list[dict] = []
     if skipped:
         warnings.append({"employee_code": None, "message": f"{len(skipped)} colaborador(es) INACTIVO(S) (suspensión): solo se les paga lo "
@@ -463,6 +484,15 @@ def calculate(period: PayPeriod, *, user=None, request=None, trigger: str = "MAN
             concept_id=concept_ids.get(ln.concept) if ln.concept else None, deduction_type_id=ln.deduction_type_id,
             quantity=ln.quantity, unit=ln.unit, rate=ln.rate, base=ln.base, amount=ln.amount, source=ln.source[:10],
             personnel_action_id=ln.action_id, notes=ln.notes[:300], sort=ln.sort) for ln in result.lines])
+        # Fase 25: boleta diaria (cada fecha de los cortes con su traducción exacta a dinero)
+        PayrollDay.objects.bulk_create([PayrollDay(
+            payroll=payroll, detail=detail, employee=e, work_date=r["date"], cutoff_code=cutoff_of(r["date"]),
+            day_type=r["day_type"], holiday_name=r["holiday_name"][:120], scheduled_seconds=r["scheduled_seconds"],
+            worked_seconds=r["worked_seconds"], paid_seconds=r["paid_seconds"], night_seconds=r["night_seconds"],
+            vacation_seconds=r["vacation_seconds"], lateness_seconds=r["lateness_seconds"], regular_amount=r["regular_amount"],
+            vacation_amount=r["vacation_amount"], night_amount=r["night_amount"], holiday_amount=r["holiday_amount"],
+            discount_amount=r["discount_amount"], total_amount=r["total_amount"], notes=r["notes"])
+            for r in engine.daily_breakdown(gathered.inputs[e.pk], result, windows)])
         for w in result.warnings:
             warnings.append({"employee_code": e.employee_code, "message": w})
         totals["gross"] += result.gross_pay
@@ -504,6 +534,7 @@ def calculate(period: PayPeriod, *, user=None, request=None, trigger: str = "MAN
 def _clear(payroll: Payroll) -> None:
     """Borra el resultado anterior (líneas, retenciones y detalle) de una planilla NO cerrada."""
     PayrollLine.objects.filter(payroll=payroll).delete()
+    PayrollDay.objects.filter(payroll=payroll).delete()  # Fase 25
     PayrollDeduction.objects.filter(payroll_detail__payroll=payroll).delete()
     PayrollDetail.objects.filter(payroll=payroll).delete()
 
@@ -566,6 +597,7 @@ def payslip_content(detail: PayrollDetail, run: PayrollRun, folio: str, lines: l
                    "payment_date": period.payment_date.isoformat(), "attendance_windows": run.windows},
         "base_salary": money(detail.base_salary), "paid_days": str(detail.paid_days), "worked_minutes": detail.worked_minutes,
         "lines": [ln(x) for x in lines],
+        "daily": daily_view(list(PayrollDay.objects.filter(detail=detail).order_by("work_date")), lines, run.windows or []),
         "totals": {"gross": money(detail.gross_pay), "taxable_base": money(detail.taxable_base),
                    "deductions": money(detail.total_deductions), "net": money(detail.net_pay),
                    "employer": money(detail.employer_contributions)},
@@ -728,6 +760,55 @@ def line_dict(x: PayrollLine) -> dict:
             "folio_ap": x.personnel_action.folio if x.personnel_action_id else None}
 
 
+# ================================================================ Fase 25: boleta diaria
+TIME_CODES = ("SALARIO", "VACACIONES_GOCE", "NOCTURNIDAD", "FERIADO", "SEPTIMO_DIA")
+WEEKDAYS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def _h(seconds: int) -> str:
+    return str((Decimal(seconds) / 3600).quantize(Decimal("0.01")))
+
+
+def day_dict(x: PayrollDay) -> dict:
+    return {"date": x.work_date.isoformat(), "weekday": WEEKDAYS[x.work_date.weekday()], "cutoff": x.cutoff_code,
+            "day_type": x.day_type, "label": x.get_day_type_display(), "holiday": x.holiday_name,
+            "scheduled_h": _h(x.scheduled_seconds), "worked_h": _h(x.worked_seconds), "paid_h": _h(x.paid_seconds),
+            "night_h": _h(x.night_seconds), "vacation_h": _h(x.vacation_seconds), "lateness_h": _h(x.lateness_seconds),
+            "regular": money(x.regular_amount), "vacation": money(x.vacation_amount), "night": money(x.night_amount),
+            "holiday_premium": money(x.holiday_amount), "discount": money(x.discount_amount), "total": money(x.total_amount),
+            "notes": x.notes}
+
+
+def daily_view(days: list[PayrollDay], lines, windows: list[dict], cutoffs: dict[str, tuple] | None = None) -> dict:
+    """Días agrupados por corte interno + conciliación: Σ días = líneas por tiempo; el resto de conceptos y retenciones."""
+    rows = [day_dict(x) for x in days]
+    groups: dict[str, dict] = {}
+    for r in rows:
+        g = groups.setdefault(r["cutoff"] or "—", {"code": r["cutoff"] or "—", "days": [], "paid_seconds": 0, "total": Decimal(0)})
+        g["days"].append(r)
+    for x in days:
+        g = groups[x.cutoff_code or "—"]
+        g["paid_seconds"] += x.paid_seconds
+        g["total"] += x.total_amount
+        g.setdefault("start", x.work_date)
+        g["end"] = x.work_date
+    get = (lambda ln, k: ln[k]) if lines and isinstance(lines[0], dict) else (lambda ln, k: getattr(ln, k))
+    amt = lambda ln: Decimal(str(get(ln, "amount")))  # noqa: E731
+    time_total = sum((amt(ln) for ln in lines if get(ln, "code") in TIME_CODES), Decimal(0))
+    other = sum((amt(ln) for ln in lines if get(ln, "kind") == "EARNING" and get(ln, "code") not in TIME_CODES), Decimal(0))
+    retained = sum((amt(ln) for ln in lines if get(ln, "kind") in ("LEGAL", "DEDUCTION")), Decimal(0))
+    salary = next((ln for ln in lines if get(ln, "code") == "SALARIO"), None)
+    daily_total = sum((x.total_amount for x in days), Decimal(0))
+    return {
+        "hourly_rate": str(get(salary, "rate")) if salary is not None and get(salary, "rate") is not None else None,
+        "cutoffs": [{"code": g["code"], "start": g["start"].isoformat(), "end": g["end"].isoformat(), "days": g["days"],
+                     "paid_h": _h(g["paid_seconds"]), "total": money(g["total"])} for g in groups.values()],
+        "windows": windows, "daily_total": money(daily_total), "time_lines_total": money(time_total),
+        "reconciled": daily_total == time_total, "other_earnings": money(other), "retentions": money(retained),
+        "paid_h": _h(sum(x.paid_seconds for x in days)), "scheduled_h": _h(sum(x.scheduled_seconds for x in days)),
+    }
+
+
 def employee_breakdown(run: PayrollRun, code: str) -> dict:
     d = PayrollDetail.objects.select_related("employee", "employee__cost_center").filter(
         payroll=run.payroll, employee__employee_code=code).first()
@@ -747,6 +828,7 @@ def employee_breakdown(run: PayrollRun, code: str) -> dict:
                    "net_pay": d.net_pay, "employer_contributions": d.employer_contributions},
         "lines": [line_dict(x) for x in lines],
         "payslip": {"id": s.pk, "folio": s.folio, **slip_state(s)} if s else None,
+        "daily": daily_view(list(PayrollDay.objects.filter(detail=d).order_by("work_date")), list(lines), run.windows or []),
     }
 
 

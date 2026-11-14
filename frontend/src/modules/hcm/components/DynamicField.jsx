@@ -1,5 +1,6 @@
 import { patternFor } from "../lib/formSpec.js";
 import { formatWithMask, isNumericMask, maskPlaceholder, maxMaskLength } from "../lib/mask.js";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 const INPUT_TYPES = { DATE: "date", EMAIL: "email" };
 
@@ -104,9 +105,9 @@ export default function DynamicField({
       </label>
       {control}
       {hint && !message && (
-        <small id={`${id}-hint`} className="field__hint">
+        <FieldHint id={`${id}-hint`}>
           {hint}
-        </small>
+        </FieldHint>
       )}
       {message && (
         <small id={`${id}-error`} className="field__error" role="alert">

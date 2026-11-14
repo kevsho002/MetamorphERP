@@ -135,7 +135,7 @@ def test_sql_50074_attendance_activities_only_by_the_system(agent):
 def test_sql_50073_locked_segment_cannot_be_deleted(agent):
     seg = _raw_segment(agent, "LATENESS", origin="SYSTEM", is_locked=True)
     with pytest.raises(DatabaseError, match="50073"), connection.cursor() as c:
-        c.execute("DELETE FROM dbo.adh_schedule_segment WHERE id = %s", [seg.pk])
+        c.execute("DELETE FROM wfm.adh_schedule_segment WHERE id = %s", [seg.pk])
 
 
 def test_sql_50073_locked_segment_cannot_be_moved(agent):

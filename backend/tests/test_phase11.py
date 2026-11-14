@@ -171,12 +171,12 @@ def test_closing_a_cutoff_blocks_its_window_and_names_the_pay_period(api, hr_use
 
 def test_phase11_reporting_views(api, hr_user):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT CutoffCode, PayPeriodCode FROM dbo.vw_SchAttendanceCutoff WHERE CycleCode = 'SV_QUINCENAL_BPO' AND CutoffStart = '2026-09-25'")
+        cursor.execute("SELECT CutoffCode, PayPeriodCode FROM wfm.vw_SchAttendanceCutoff WHERE CycleCode = 'SV_QUINCENAL_BPO' AND CutoffStart = '2026-09-25'")
         assert cursor.fetchone() == ("C-2026-10-Q1", "2026-10-Q1")
-        cursor.execute("SELECT CutoffCount, AttendanceStatus FROM dbo.vw_SchPayPeriod WHERE CycleCode = 'SV_QUINCENAL_BPO' AND PeriodCode = '2026-10-Q1'")
+        cursor.execute("SELECT CutoffCount, AttendanceStatus FROM wfm.vw_SchPayPeriod WHERE CycleCode = 'SV_QUINCENAL_BPO' AND PeriodCode = '2026-10-Q1'")
         assert cursor.fetchone() == (1, "OPEN")
-        for view in ("vw_SchPayrollHours", "vw_AcdStatusSegment", "vw_AcdAgentSession"):
-            cursor.execute(f"SELECT TOP 1 * FROM dbo.{view}")
+        for view in ("wfm.vw_SchPayrollHours", "acd.vw_AcdStatusSegment", "acd.vw_AcdAgentSession"):
+            cursor.execute(f"SELECT TOP 1 * FROM {view}")
 
 
 # ================================================================== 2. ACD: estados y auxiliares

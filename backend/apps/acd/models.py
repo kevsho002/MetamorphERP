@@ -27,6 +27,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator, RegexVa
 from django.db import models
 from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.hcm.models import Employee
 
 UPPER_CODE = RegexValidator(r"^[A-Z][A-Z0-9_\-]*$", "Use MAYÚSCULAS, dígitos, guion o guion bajo; debe iniciar con letra.")
@@ -48,7 +49,7 @@ class Division(models.Model):
     created_at = models.DateTimeField("creada", auto_now_add=True)
 
     class Meta:
-        db_table = "acd_division"
+        db_table = sql_table("acd", "acd_division")
         ordering = ["name"]
         verbose_name = "división"
         verbose_name_plural = "divisiones"
@@ -77,7 +78,7 @@ class PrimaryStatus(models.Model):
     is_active = models.BooleanField("activo", default=True)
 
     class Meta:
-        db_table = "acd_primary_status"
+        db_table = sql_table("acd", "acd_primary_status")
         ordering = ["sort_order", "code"]
         verbose_name = "estado operativo (primario)"
         verbose_name_plural = "estados operativos (primarios)"
@@ -107,7 +108,7 @@ class AuxCode(models.Model):
     created_at = models.DateTimeField("creado", auto_now_add=True)
 
     class Meta:
-        db_table = "acd_aux_code"
+        db_table = sql_table("acd", "acd_aux_code")
         ordering = ["primary_status__sort_order", "sort_order", "name"]
         verbose_name = "auxiliar / sub-auxiliar"
         verbose_name_plural = "auxiliares y sub-auxiliares"
@@ -155,7 +156,7 @@ class AgentGroup(models.Model):
     created_at = models.DateTimeField("creado", auto_now_add=True)
 
     class Meta:
-        db_table = "acd_agent_group"
+        db_table = sql_table("acd", "acd_agent_group")
         ordering = ["name"]
         verbose_name = "grupo de agentes"
         verbose_name_plural = "grupos de agentes"
@@ -170,7 +171,7 @@ class GroupAuxAccess(models.Model):
     created_at = models.DateTimeField("otorgado", auto_now_add=True)
 
     class Meta:
-        db_table = "acd_group_aux"
+        db_table = sql_table("acd", "acd_group_aux")
         verbose_name = "acceso a auxiliar"
         verbose_name_plural = "accesos a auxiliares"
         constraints = [models.UniqueConstraint(fields=["group", "aux_code"], name="uq_acd_group_aux")]
@@ -189,7 +190,7 @@ class AgentMembership(models.Model):
     ended_at = models.DateTimeField("retirado", null=True, blank=True)
 
     class Meta:
-        db_table = "acd_agent_member"
+        db_table = sql_table("acd", "acd_agent_member")
         ordering = ["group_id", "employee_id"]
         verbose_name = "agente del grupo"
         verbose_name_plural = "agentes por grupo"
@@ -224,7 +225,7 @@ class AgentSession(models.Model):
     paid_minutes = models.PositiveIntegerField("minutos pagados enviados", default=0)
 
     class Meta:
-        db_table = "acd_agent_session"
+        db_table = sql_table("acd", "acd_agent_session")
         ordering = ["-login_at"]
         verbose_name = "sesión ACD"
         verbose_name_plural = "sesiones ACD"
@@ -258,7 +259,7 @@ class StatusSegment(models.Model):
     notes = models.CharField("notas", max_length=300, blank=True)
 
     class Meta:
-        db_table = "acd_status_segment"
+        db_table = sql_table("acd", "acd_status_segment")
         ordering = ["employee_id", "start_at"]
         verbose_name = "segmento de estado"
         verbose_name_plural = "segmentos de estado"

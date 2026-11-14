@@ -132,7 +132,7 @@ def test_admin_settings_singleton_and_audit(su_client):
     assert r.status_code == 302 and r["Location"].endswith("/admin/system/platformsettings/1/change/")
     data = {
         "idle_timeout_minutes": 20, "idle_warning_seconds": 60, "max_session_hours": 8, "max_sessions_per_user": 0,
-        "maintenance_message": "Mantenimiento", "announcement": "Hola", "announcement_level": "info", "max_document_mb": 5,
+        "maintenance_message": "Mantenimiento", "announcement": "Hola", "announcement_level": "info", "max_document_mb": 5, "max_attachment_mb": 10, "max_failed_logins": 5,
         # Fases 22 y 23: apariencia corporativa y alcance de las AP también se editan aquí
         "brand_palette": "NAVY", "brand_accent": "", "ap_full_scope_roles": '["HR", "WFM"]',
     }

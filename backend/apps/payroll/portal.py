@@ -11,6 +11,7 @@ supervisor, corridas diarias automáticas y reglas por cuenta (séptimo día opc
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Q
@@ -20,9 +21,11 @@ from apps.accounts.permissions import user_permissions
 from apps.accounts.roles import Perm
 from apps.hcm.models import Employee
 from apps.payroll.models import (
-    PayrollAccountRule, PayrollDetail, PayrollException, PayrollIteration, PayrollRun, PayrollSetting, Payslip,
+    PayrollAccountRule, PayrollDay, PayrollDetail, PayrollException, PayrollIteration, PayrollRun, PayrollSetting, Payslip,
 )
-from apps.payroll.services import CLOSED_STATUSES, PayrollError, calculate, employee_breakdown, setting_for
+from apps.payroll.services import (
+    CLOSED_STATUSES, PayrollError, _h, calculate, day_dict, employee_breakdown, money, setting_for,
+)
 from apps.scheduling.models import AttendanceCutoff, PayPeriod
 from apps.system.audit import record
 from apps.system.models import AuditEvent
@@ -40,7 +43,7 @@ def my_employee(user) -> Employee | None:
 
 
 # ================================================================ portal del colaborador
-def my_payslips(user) -> dict:
+def my_payslips(user, *, year=None, page=1, page_size=6) -> dict:
     """Boletas del colaborador: preliminares (planillas calculadas y publicadas, aún abiertas) y finales (cerradas)."""
     e = my_employee(user)
     if e is None:
@@ -56,12 +59,108 @@ def my_payslips(user) -> dict:
         b["preliminary"] = True
         b["exceptions"] = [exception_dict(x) for x in PayrollException.objects.filter(payroll=d.payroll, employee=e)]
         preliminary.append(b)
+    # Fase 27: boletas finales paginadas y filtrables por año de pago.
+    slips = Payslip.objects.filter(employee=e)
+    final_years = sorted({d.year for d in slips.values_list("period_end", flat=True)}, reverse=True)
+    try:
+        year = int(year) if year not in (None, "") else None
+    except (TypeError, ValueError):
+        raise PayrollError("Año inválido.", "invalid", 400) from None
+    if year is not None:
+        slips = slips.filter(period_end__year=year)
+    try:
+        page_size = int(page_size) if int(page_size) in CUTOFF_PAGE_SIZES else 6
+    except (TypeError, ValueError):
+        page_size = 6
+    count = slips.count()
+    pages = max(1, -(-count // page_size))
+    try:
+        page = min(max(1, int(page)), pages)
+    except (TypeError, ValueError):
+        page = 1
     finals = [{"id": s.pk, "folio": s.folio, "payroll_code": s.content.get("payroll_code"), "period_start": s.period_start,
                "period_end": s.period_end, "payment_date": s.payment_date, "net_pay": s.net_pay, "content": s.content,
                "content_hash": s.content_hash}
-              for s in Payslip.objects.filter(employee=e).order_by("-period_end")[:24]]
+              for s in slips.order_by("-period_end")[(page - 1) * page_size: page * page_size]]
     return {"employee": {"code": e.employee_code, "name": e.full_name}, "preliminary": preliminary, "final": finals,
+            "final_page": {"year": year, "years": final_years, "count": count, "page": page, "pages": pages,
+                           "page_size": page_size},
             "categories": [{"value": v, "label": label} for v, label in PayrollException.Category.choices]}
+
+
+CUTOFF_PAGE_SIZES = (3, 6, 12, 24)
+
+
+def my_cutoffs(user, *, year=None, page=1, page_size=6) -> dict:
+    """Fase 27 — Historial de la boleta por CORTE interno de asistencia, paginado y filtrable por año.
+
+    Lista cada corte del ciclo del colaborador en el que estuvo activo (ventana del corte ∩ [ingreso, baja u hoy]),
+    del más reciente al más antiguo, con su desglose diario cuando la planilla que lo paga ya está cerrada (FINAL) o
+    tiene la boleta preliminar publicada (PRELIMINAR). Los cortes aún sin cálculo publicado aparecen como PENDIENTE.
+    """
+    from apps.scheduling.services import cycle_for
+
+    e = my_employee(user)
+    if e is None:
+        raise PayrollError("Su usuario no está vinculado a un colaborador: no tiene boletas.", "no_employee", 404)
+    cycle = cycle_for(e)
+    today = timezone.localdate()
+    last = min(e.termination_date or today, today)
+    qs = AttendanceCutoff.objects.none()
+    if cycle is not None and e.hire_date and e.hire_date <= last:
+        qs = (AttendanceCutoff.objects.filter(cycle=cycle, cutoff_end__gte=e.hire_date, cutoff_start__lte=last)
+              .select_related("pay_period"))
+    years = sorted({c.year for c in qs.values_list("cutoff_end", flat=True)}, reverse=True)
+    try:
+        year = int(year) if year not in (None, "") else None
+    except (TypeError, ValueError):
+        raise PayrollError("Año inválido.", "invalid", 400) from None
+    if year is not None:
+        qs = qs.filter(cutoff_end__year=year)
+    try:
+        page_size = int(page_size)
+    except (TypeError, ValueError):
+        page_size = 6
+    page_size = page_size if page_size in CUTOFF_PAGE_SIZES else 6
+    count = qs.count()
+    pages = max(1, -(-count // page_size))
+    try:
+        page = min(max(1, int(page)), pages)
+    except (TypeError, ValueError):
+        page = 1
+    cutoffs = list(qs.order_by("-cutoff_start")[(page - 1) * page_size: page * page_size])
+
+    rows = []
+    if cutoffs:
+        lo, hi = min(c.cutoff_start for c in cutoffs), max(c.cutoff_end for c in cutoffs)
+        days = list(PayrollDay.objects.filter(employee=e, work_date__range=(lo, hi))
+                    .select_related("payroll").order_by("work_date"))
+        calc_ids = {d.payroll_id for d in days if d.payroll.payroll_status == "CALCULATED"}
+        published = set(PayrollRun.objects.filter(payroll_id__in=calc_ids, preliminary_published_at__isnull=False)
+                        .values_list("payroll_id", flat=True))
+        visible = [d for d in days if d.payroll.payroll_status in CLOSED_STATUSES or d.payroll_id in published]
+        for c in cutoffs:
+            mine = [d for d in visible if c.cutoff_start <= d.work_date <= c.cutoff_end
+                    and (not d.cutoff_code or d.cutoff_code == c.code)]
+            final = any(d.payroll.payroll_status in CLOSED_STATUSES for d in mine)
+            if final:  # un corte pagado en planilla cerrada no mezcla días de una preliminar posterior
+                mine = [d for d in mine if d.payroll.payroll_status in CLOSED_STATUSES]
+            state = "FINAL" if final else ("PRELIMINARY" if mine else "PENDING")
+            payroll = mine[0].payroll if mine else None
+            rows.append({
+                "id": c.pk, "code": c.code, "start": c.cutoff_start, "end": c.cutoff_end, "status": c.status,
+                "status_label": c.get_status_display(), "state": state,
+                "state_label": {"FINAL": "Pagado (boleta final)", "PRELIMINARY": "Preliminar",
+                                "PENDING": "Pendiente de cálculo"}[state],
+                "pay_period": {"code": c.pay_period.code, "payment_date": c.pay_period.payment_date},
+                "payroll_code": payroll.payroll_code if payroll else None,
+                "currency": payroll.currency_code if payroll else None,
+                "scheduled_h": _h(sum(d.scheduled_seconds for d in mine)), "paid_h": _h(sum(d.paid_seconds for d in mine)),
+                "total": money(sum((d.total_amount for d in mine), Decimal(0))),
+                "days": [day_dict(d) for d in mine],
+            })
+    return {"employee": {"code": e.employee_code, "name": e.full_name}, "year": year, "years": years, "count": count,
+            "page": page, "pages": pages, "page_size": page_size, "results": rows}
 
 
 def team_manager_code(employee: Employee, on: date) -> str:

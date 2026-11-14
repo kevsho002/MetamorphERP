@@ -11,7 +11,7 @@
     pa_folio_sequence     correlativo de folios por prefijo y año
 
 En SQL Server (migración 0002): FK a hcm.Employee, firmas inmutables (50050) y valores congelados cuando la AP
-deja de ser borrador (50051); vista dbo.vw_PersonnelAction.
+deja de ser borrador (50051); vista pa.vw_PersonnelAction.
 """
 
 from __future__ import annotations
@@ -19,8 +19,9 @@ from __future__ import annotations
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.accounts.roles import Role
 from apps.hcm.models import Employee
 
@@ -107,7 +108,7 @@ class ActionType(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "pa_action_type"
+        db_table = sql_table("pa", "pa_action_type")
         ordering = ["display_order", "name"]
         verbose_name = "tipo de acción de personal"
         verbose_name_plural = "tipos de acción de personal"
@@ -152,7 +153,7 @@ class ActionAttribute(models.Model):
     is_active = models.BooleanField("activo", default=True)
 
     class Meta:
-        db_table = "pa_action_attribute"
+        db_table = sql_table("pa", "pa_action_attribute")
         ordering = ["action_type_id", "display_order", "id"]
         verbose_name = "campo de la AP"
         verbose_name_plural = "campos de la AP (EAV)"
@@ -178,7 +179,7 @@ class ApprovalStep(models.Model):
     role = models.CharField("rol que firma", max_length=10, choices=Role)
 
     class Meta:
-        db_table = "pa_approval_step"
+        db_table = sql_table("pa", "pa_approval_step")
         ordering = ["action_type_id", "order"]
         verbose_name = "paso de aprobación"
         verbose_name_plural = "cadena de aprobación (firmas)"
@@ -220,7 +221,7 @@ class PersonnelAction(models.Model):
     cancel_reason = models.CharField("motivo de anulación", max_length=500, blank=True)
 
     class Meta:
-        db_table = "pa_action"
+        db_table = sql_table("pa", "pa_action")
         ordering = ["-created_at", "-id"]
         verbose_name = "acción de personal"
         verbose_name_plural = "acciones de personal"
@@ -249,7 +250,7 @@ class ActionValue(models.Model):
     value_json = models.JSONField("JSON", null=True, blank=True)
 
     class Meta:
-        db_table = "pa_action_value"
+        db_table = sql_table("pa", "pa_action_value")
         verbose_name = "valor de la AP"
         verbose_name_plural = "valores de la AP"
         constraints = [models.UniqueConstraint(fields=["action", "attribute"], name="uq_pa_value_attribute")]
@@ -289,7 +290,7 @@ class ActionSignature(models.Model):
     signature = models.CharField("firma (HMAC-SHA256)", max_length=64)
 
     class Meta:
-        db_table = "pa_action_signature"
+        db_table = sql_table("pa", "pa_action_signature")
         ordering = ["action_id", "step_order"]
         verbose_name = "firma de la AP"
         verbose_name_plural = "firmas de la AP"
@@ -305,7 +306,7 @@ class FolioSequence(models.Model):
     last_value = models.PositiveIntegerField(default=0)
 
     class Meta:
-        db_table = "pa_folio_sequence"
+        db_table = sql_table("pa", "pa_folio_sequence")
         constraints = [models.UniqueConstraint(fields=["prefix", "year"], name="uq_pa_folio_sequence")]
 
 
@@ -347,7 +348,7 @@ class EmploymentEvent(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
 
     class Meta:
-        db_table = "pa_employment_event"
+        db_table = sql_table("pa", "pa_employment_event")
         ordering = ["employee_id", "start_date", "id"]
         verbose_name = "evento laboral"
         verbose_name_plural = "historial laboral"
@@ -362,3 +363,62 @@ class EmploymentEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_kind_display()} {self.start_date}"
+
+
+# ================================================================ Fase 24: adjuntos (evidencias) de la AP
+class AttachmentCategory(models.TextChoices):
+    EVIDENCE = "EVIDENCE", "Evidencia / respaldo"
+    MEDICAL = "MEDICAL", "Constancia médica"
+    LETTER = "LETTER", "Carta o solicitud"
+    IDENTITY = "IDENTITY", "Documento de identidad"
+    OTHER = "OTHER", "Otro"
+
+
+class AttachmentKind(models.TextChoices):
+    IMAGE = "IMAGE", "Imagen"
+    PDF = "PDF", "PDF"
+    DOCUMENT = "DOCUMENT", "Documento de Office"
+
+
+class ActionAttachment(models.Model):
+    """Archivo de soporte de una AP (imagen, PDF o documento): metadatos + SHA-256; el binario va al almacenamiento
+    privado (PRIVATE_MEDIA_ROOT), igual que el expediente digital. Nunca se borra: se RETIRA con motivo (y solo mientras
+    la AP está en borrador o en aprobación). En SQL Server (migración 0013): sin DELETE (50110), contenido inmutable
+    (50112) y sin adjuntos nuevos ni retiros en AP resueltas o anuladas (50111 / 50113)."""
+
+    action = models.ForeignKey(PersonnelAction, on_delete=models.PROTECT, related_name="attachments", verbose_name="AP")
+    category = models.CharField("categoría", max_length=10, choices=AttachmentCategory, default=AttachmentCategory.EVIDENCE)
+    description = models.CharField("descripción", max_length=300, blank=True)
+    kind = models.CharField("clase", max_length=8, choices=AttachmentKind)
+    original_name = models.CharField("nombre original", max_length=255)
+    storage_path = models.CharField("ruta en el almacenamiento privado", max_length=500)
+    mime_type = models.CharField("tipo MIME", max_length=100)
+    size_bytes = models.BigIntegerField("tamaño (bytes)")
+    sha256_hash = models.CharField("SHA-256", max_length=64)
+    image_width = models.IntegerField("ancho (px)", null=True, blank=True)
+    image_height = models.IntegerField("alto (px)", null=True, blank=True)
+    status_at_upload = models.CharField("estado de la AP al adjuntar", max_length=9, choices=Status)
+    uploaded_at = models.DateTimeField("adjuntado", auto_now_add=True)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="+", verbose_name="adjuntado por")
+    uploaded_by_username = models.CharField("usuario", max_length=150)
+    removed_at = models.DateTimeField("retirado", null=True, blank=True)
+    removed_by_username = models.CharField("retirado por", max_length=150, blank=True)
+    removed_reason = models.CharField("motivo del retiro", max_length=300, blank=True)
+
+    class Meta:
+        db_table = sql_table("pa", "pa_action_attachment")
+        ordering = ["action_id", "uploaded_at", "id"]
+        verbose_name = "adjunto de la AP"
+        verbose_name_plural = "adjuntos de la AP"
+        indexes = [models.Index(fields=["action", "removed_at"], name="ix_pa_attachment_action")]
+        constraints = [
+            models.CheckConstraint(condition=Q(category__in=AttachmentCategory.values), name="ck_pa_attachment_category"),
+            models.CheckConstraint(condition=Q(kind__in=AttachmentKind.values), name="ck_pa_attachment_kind"),
+            models.CheckConstraint(condition=Q(size_bytes__gt=0), name="ck_pa_attachment_size"),
+            models.CheckConstraint(condition=Q(removed_at__isnull=True) | ~Q(removed_reason=""), name="ck_pa_attachment_removed"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.action_id} · {self.original_name}"
+

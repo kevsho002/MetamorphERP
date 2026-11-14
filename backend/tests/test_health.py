@@ -16,28 +16,39 @@ def test_expected_tables_cover_sql_first_and_django():
     tables = expected_tables()
     assert "hcm.Employee" in tables
     assert "core.catCostCenter" in tables
-    assert "dbo.accounts_customuser" in tables
+    assert "sec.accounts_customuser" in tables
     assert "dbo.django_session" in tables
-    # 19 de la Fase 1 + catCostCenter − las 8 tablas wfm.* del mock de asistencias (retiradas en la Fase 22)
-    assert len([t for t in tables if not t.startswith("dbo.")]) == 12
-    assert not any(t.startswith("wfm.") for t in tables)
+    # Fase 25: en dbo solo quedan las tablas internas del framework de Django; el ERP vive en esquemas por módulo.
+    assert all(t.split(".", 1)[1].startswith(("auth_", "django_")) for t in tables if t.startswith("dbo."))
+    assert {"wfm.sch_pay_cycle", "fin.pay_payroll_line", "pa.pa_action", "com.com_announcement", "adm.sys_audit_event"} <= set(tables)
+    assert "wfm.Attendance" not in tables  # el mock de asistencias retirado en la Fase 22
 
 
-def test_db_health_returns_503_when_database_is_unreachable(api):
+@pytest.mark.django_db
+def test_db_health_returns_503_when_database_is_unreachable(api, admin_user):
     with mock.patch("apps.health.views.connection.cursor", side_effect=OperationalError("Login timeout expired")):
         r = api.get("/api/v1/health/db")
     assert r.status_code == 503
     body = r.json()
     assert body["status"] == "error"
-    assert "Login timeout expired" in body["error"]
+    assert "Login timeout" not in body["error"]  # Fase 26: el público no ve el detalle del driver
+    api.force_authenticate(admin_user)  # sin sesión en BD: la BD está caída
+    with mock.patch("apps.health.views.connection.cursor", side_effect=OperationalError("Login timeout expired")):
+        r = api.get("/api/v1/health/db")
+    assert "Login timeout expired" in r.json()["error"]
 
 
 @pytest.mark.django_db
-def test_db_health_ok_against_test_database(api):
+def test_db_health_ok_against_test_database(api, admin_user, employee_user):
     r = api.get("/api/v1/health/db")
     body = r.json()
     assert r.status_code == 200, body
-    assert body["status"] == "ok"
+    assert body["status"] == "ok" and body["missing_count"] == 0
+    assert "database" not in body and "server_version" not in body  # Fase 26: sin metadatos técnicos para el público
+    api.force_login(employee_user)
+    assert "database" not in api.get("/api/v1/health/db").json()
+    api.force_login(admin_user)
+    body = api.get("/api/v1/health/db").json()
     assert body["missing_tables"] == []
     assert body["database"].startswith("test_")
 

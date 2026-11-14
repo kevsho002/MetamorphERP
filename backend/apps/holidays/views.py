@@ -43,7 +43,7 @@ class _View(APIView):
         if isinstance(exc, services.HolidayError):
             return Response({"detail": exc.message, "code": exc.code}, status=exc.status)
         if isinstance(exc, DatabaseError) and "50097" in str(exc):
-            return Response({"detail": "SQL Server rechazó el cambio: el feriado ya generó Holiday Segments.", "code": "sql_50097"},
+            return Response({"detail": "El sistema rechazó el cambio: el feriado ya generó Holiday Segments.", "code": "sql_50097"},
                             status=status.HTTP_409_CONFLICT)
         return super().handle_exception(exc)
 

@@ -64,9 +64,11 @@ def explain_database_error(exc: DatabaseError) -> str:
     text = str(exc)
     for constraint, message in _CONSTRAINT_MESSAGES.items():
         if constraint in text:
-            return f"{message} (restricción {constraint})"
+            return message
     if "50001" in text or "secuencia" in text.lower():
         return "No se pudo generar el ID corporativo: se agotó el correlativo del país para ese año o el país no es válido."
-    kind = "integridad" if isinstance(exc, IntegrityError) else "base de datos"
-    return f"La base de datos rechazó el registro por una regla de {kind}: {text.splitlines()[0][:300]}"
+    # El detalle técnico (objetos y mensaje del motor) queda en el log del servidor, no en la respuesta al usuario.
+    audit.warning("employee_write_rejected: %s", text.splitlines()[0][:500] if text else exc.__class__.__name__)
+    kind = "integridad" if isinstance(exc, IntegrityError) else "consistencia"
+    return f"El sistema rechazó el registro por una regla de {kind} de los datos. Revise la información e intente de nuevo."
 

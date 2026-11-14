@@ -22,3 +22,6 @@ Thumbs.db
 superusuario.txt
 *.env
 !backend/.env.example
+
+# Fase 26: credenciales de los datos de prueba (texto plano)
+accesos_prueba.txt

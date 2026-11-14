@@ -1,4 +1,4 @@
-"""Fase 23: selector jerárquico de colaboradores en las AP (dbo.fn_EmployeesUnderLeader), paleta dual (global y
+"""Fase 23: selector jerárquico de colaboradores en las AP (org.fn_EmployeesUnderLeader), paleta dual (global y
 personal) compartida con el Django Admin, calendario de feriados (copia de año con Semana Santa en SQL Server) y logos
 corporativos (favicon, barra superior, cabecera de documentos / PDF)."""
 
@@ -55,7 +55,7 @@ def tree(api, wfm_user, make_employee, make_user):
 def test_hierarchy_picker_and_server_validation(api, tree, hr_user, admin_user):
     p = tree["people"]
     with connection.cursor() as c:
-        c.execute("SELECT employee_id, depth, relation FROM dbo.fn_EmployeesUnderLeader(%s, %s) ORDER BY depth", [p["SupA"].pk, timezone.localdate()])
+        c.execute("SELECT employee_id, depth, relation FROM org.fn_EmployeesUnderLeader(%s, %s) ORDER BY depth", [p["SupA"].pk, timezone.localdate()])
         rows = c.fetchall()
     assert [(r[0], r[1], r[2]) for r in rows] == [(p["TmA"].pk, 1, "DIRECT"), (p["Agente0"].pk, 2, "INDIRECT")]
 
@@ -99,7 +99,7 @@ def test_hierarchy_picker_and_server_validation(api, tree, hr_user, admin_user):
     assert body["scope"] == "all" and body["total"] == 8
     # El Director ve toda su cadena (6 personas).
     with connection.cursor() as c:
-        c.execute("SELECT COUNT(*) FROM dbo.fn_EmployeesUnderLeader(%s, %s)", [p["Dir"].pk, timezone.localdate()])
+        c.execute("SELECT COUNT(*) FROM org.fn_EmployeesUnderLeader(%s, %s)", [p["Dir"].pk, timezone.localdate()])
         assert c.fetchone()[0] == 7
 
 
@@ -141,9 +141,9 @@ def test_dual_palette_and_admin_theme(api, admin_user, employee_user):
 # ================================================================== calendario de feriados
 def test_holiday_calendar_copy_year_and_sql(api, hr_user, wfm_user, countries):
     with connection.cursor() as c:
-        c.execute("SELECT dbo.fn_EasterSunday(2026), dbo.fn_EasterSunday(2028)")
+        c.execute("SELECT wfm.fn_EasterSunday(2026), wfm.fn_EasterSunday(2028)")
         assert c.fetchone() == (date(2026, 4, 5), date(2028, 4, 16))
-        c.execute("SELECT IsoWeekday, HolidayName FROM dbo.vw_HolidayCalendar WHERE CountryCode = 'SV' AND HolidayDate = '2026-01-01'")
+        c.execute("SELECT IsoWeekday, HolidayName FROM wfm.vw_HolidayCalendar WHERE CountryCode = 'SV' AND HolidayDate = '2026-01-01'")
         assert c.fetchone() == (4, "Año Nuevo")  # jueves
     api.force_login(wfm_user)
     assert api.post("/api/v1/holidays/copy-year/", {"country": "SV", "from_year": 2026, "to_year": 2028}, format="json").status_code == 403

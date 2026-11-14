@@ -226,11 +226,11 @@ def test_phase10_reporting_views(api, hr_user):
     api.force_login(hr_user)
     emp = hire(api, schedule="L-V 08:00-12:00 + 13:00-17:00")
     with connection.cursor() as cursor:
-        cursor.execute("SELECT BlockNo, StartTime, DayMinutes FROM dbo.vw_SchScheduleDay WHERE EmployeeCode = %s AND DayKey = 'mon' ORDER BY BlockNo",
+        cursor.execute("SELECT BlockNo, StartTime, DayMinutes FROM wfm.vw_SchScheduleDay WHERE EmployeeCode = %s AND DayKey = 'mon' ORDER BY BlockNo",
                        [emp.employee_code])
         assert [tuple(r) for r in cursor.fetchall()] == [(1, "08:00", 240), (2, "13:00", 240)]
-        cursor.execute("SELECT AssignmentMode FROM dbo.vw_SchScheduleAssignment WHERE EmployeeCode = %s", [emp.employee_code])
+        cursor.execute("SELECT AssignmentMode FROM wfm.vw_SchScheduleAssignment WHERE EmployeeCode = %s", [emp.employee_code])
         assert cursor.fetchone()[0] == "PRIMARY"
-        cursor.execute("SELECT MinContinuousMinutes, LunchMinutes FROM dbo.vw_SchLunchRule WHERE CountryCode = 'SV'")
+        cursor.execute("SELECT MinContinuousMinutes, LunchMinutes FROM wfm.vw_SchLunchRule WHERE CountryCode = 'SV'")
         assert tuple(cursor.fetchone()) == (360, 30)
     assert time(19) == engine.parse_hhmm("19:00")

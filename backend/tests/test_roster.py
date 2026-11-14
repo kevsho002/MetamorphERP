@@ -193,7 +193,7 @@ def test_reporting_view_in_sql_server(catalog, emp, api, hr_user):
     change(api, emp.employee_code, "2026-03-01", client="ACME", brand="ACME-MOB")
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT AttributeCode, ValueLabel, ParentValue, IsNow FROM dbo.vw_RosterAssignment WHERE EmployeeCode = %s ORDER BY AttributeCode",
+            "SELECT AttributeCode, ValueLabel, ParentValue, IsNow FROM org.vw_RosterAssignment WHERE EmployeeCode = %s ORDER BY AttributeCode",
             [emp.employee_code],
         )
         assert cursor.fetchall() == [("brand", "Acme Mobile", "ACME", True), ("client", "Acme Corp", None, True)]

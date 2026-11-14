@@ -115,7 +115,7 @@ class PayCycleAdmin(_AuditedAdmin):
     list_filter = ("country", "pay_frequency", "is_active")
     search_fields = ("code", "name")
     inlines = [PayPeriodInline, AttendanceCutoffInline]
-    actions = ["generate_this_year", "generate_next_year"]
+    actions = ["generate_this_year", "generate_next_year", "realign_open_cutoffs"]
     fieldsets = (
         (None, {"fields": ("code", "name", "country", "pay_frequency", "is_default", "is_active", "notes")}),
         ("Periodo de pago", {"fields": ("period_rule", "period_start_day", "first_half_end_day", "length_days", "anchor_date", "payment_lag_days"),
@@ -181,6 +181,13 @@ class PayCycleAdmin(_AuditedAdmin):
     @admin.action(description="Generar periodos del próximo año")
     def generate_next_year(self, request, queryset):
         self._generate(request, queryset, timezone.localdate().year + 1)
+
+    @admin.action(description="Realinear los cortes abiertos a la regla del ciclo (Fase 24)")
+    def realign_open_cutoffs(self, request, queryset):
+        for cycle in queryset.filter(is_active=True):
+            r = services.realign_cutoffs(cycle, user=request.user, request=request)
+            self.message_user(request, f"{cycle.code}: {r['created']} cortes abiertos regenerados ({r['changed']} con fechas nuevas); "
+                                       f"{r['kept']} cerrados o pagados se conservan. Recalcule las planillas abiertas.", messages.SUCCESS)
 
 
 @admin.register(PayPeriod)

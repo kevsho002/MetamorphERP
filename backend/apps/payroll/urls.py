@@ -24,6 +24,7 @@ urlpatterns = [
     path("payroll/batches/<int:pk>/", views.BatchDetailView.as_view(), name="payroll-batch"),
     # Fase 21
     path("payroll/me/payslips/", views.MyPayslipsView.as_view(), name="payroll-my-payslips"),
+    path("payroll/me/cutoffs/", views.MyCutoffsView.as_view(), name="payroll-my-cutoffs"),
     path("payroll/me/payslips/<str:kind>/<int:pk>/pdf/", views.MyPayslipPdfView.as_view(), name="payroll-my-payslip-pdf"),
     path("payroll/exceptions/", views.ExceptionsView.as_view(), name="payroll-exceptions"),
     path("payroll/exceptions/<int:pk>/resolve/", views.ExceptionDetailView.as_view(), name="payroll-exception-resolve"),

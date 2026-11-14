@@ -25,6 +25,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator, RegexVa
 from django.db import models
 from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.acd.models import AuxCode, PrimaryStatus
 from apps.hcm.models import Employee
 from apps.scheduling.fields import WallClockDateTimeField
@@ -73,7 +74,7 @@ class UtilizationCategory(models.Model):
     is_active = models.BooleanField("activa", default=True)
 
     class Meta:
-        db_table = "adh_activity_category"
+        db_table = sql_table("wfm", "adh_activity_category")
         ordering = ["sort_order", "name"]
         verbose_name = "categoría de utilización"
         verbose_name_plural = "categorías de utilización (Time Utilization)"
@@ -164,7 +165,7 @@ class ActivityType(models.Model):
     updated_at = models.DateTimeField("actualizada", auto_now=True)
 
     class Meta:
-        db_table = "adh_activity_type"
+        db_table = sql_table("wfm", "adh_activity_type")
         ordering = ["sort_order", "name"]
         verbose_name = "tipo de actividad"
         verbose_name_plural = "tipos de actividad (segmentos)"
@@ -192,7 +193,7 @@ class ActivityClient(models.Model):
     client = models.ForeignKey("operations.Client", on_delete=models.PROTECT, related_name="+", verbose_name="cliente")
 
     class Meta:
-        db_table = "adh_activity_client"
+        db_table = sql_table("wfm", "adh_activity_client")
         verbose_name = "cuenta de la actividad"
         verbose_name_plural = "cuentas de la actividad"
         constraints = [models.UniqueConstraint(fields=["activity", "client"], name="uq_adh_activity_client")]
@@ -232,7 +233,7 @@ class GridSetting(models.Model):
                                    related_name="+", verbose_name="actualizada por")
 
     class Meta:
-        db_table = "adh_grid_setting"
+        db_table = sql_table("wfm", "adh_grid_setting")
         verbose_name = "configuración de la grilla"
         verbose_name_plural = "configuración de la grilla (planificación)"
         constraints = [
@@ -260,7 +261,7 @@ class ActivityStatusRule(models.Model):
     role = models.CharField("rol", max_length=9, choices=Role, default=Role.PRIMARY)
 
     class Meta:
-        db_table = "adh_activity_status"
+        db_table = sql_table("wfm", "adh_activity_status")
         ordering = ["activity_id", "role", "primary_status__sort_order"]
         verbose_name = "estado que cumple la actividad"
         verbose_name_plural = "estados que cumplen la actividad"
@@ -306,7 +307,7 @@ class ScheduleSegment(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "adh_schedule_segment"
+        db_table = sql_table("wfm", "adh_schedule_segment")
         ordering = ["employee_id", "start_at"]
         verbose_name = "segmento de actividad"
         verbose_name_plural = "segmentos de actividad"
@@ -347,7 +348,7 @@ class AdherenceException(models.Model):
     created_at = models.DateTimeField("registrado", auto_now_add=True)
 
     class Meta:
-        db_table = "adh_exception"
+        db_table = sql_table("wfm", "adh_exception")
         ordering = ["employee_id", "start_at"]
         verbose_name = "justificación por AP"
         verbose_name_plural = "justificaciones por AP"
@@ -384,7 +385,7 @@ class AdherenceDay(models.Model):
                                     related_name="+", verbose_name="calculado por")
 
     class Meta:
-        db_table = "adh_adherence_day"
+        db_table = sql_table("wfm", "adh_adherence_day")
         ordering = ["shift_date", "employee_id"]
         verbose_name = "adherencia diaria (guardada)"
         verbose_name_plural = "adherencia diaria (guardada)"
@@ -418,7 +419,7 @@ class Deviation(models.Model):
                                    verbose_name="auxiliar real")
 
     class Meta:
-        db_table = "adh_deviation"
+        db_table = sql_table("wfm", "adh_deviation")
         ordering = ["employee_id", "start_at"]
         verbose_name = "desviación"
         verbose_name_plural = "desviaciones (Out of Adherence / Unpaid Excess Login)"
@@ -480,7 +481,7 @@ class ChangeRequest(models.Model):
     applied_segment_id = models.BigIntegerField("segmento resultante", null=True, blank=True)
 
     class Meta:
-        db_table = "adh_change_request"
+        db_table = sql_table("wfm", "adh_change_request")
         ordering = ["-requested_at", "-id"]
         verbose_name = "solicitud de corrección (cola WFM)"
         verbose_name_plural = "cola de aprobación de WFM (correcciones de segmentos)"

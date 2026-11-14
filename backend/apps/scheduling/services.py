@@ -377,6 +377,65 @@ def generate_cutoffs(cycle: PayCycle, year: int, *, periods: list[PayPeriod] | N
     return {"created": len(created), "skipped": skipped, "codes": [c.code for c in created]}
 
 
+class CutoffRealignError(Exception):
+    pass
+
+
+@transaction.atomic
+def realign_cutoffs(cycle: PayCycle, *, user=None, request=None, audit: bool = True) -> dict:
+    """Fase 24 — Rehace los cortes ABIERTOS del ciclo con su regla vigente (p. ej. del 25 al 9 y del 10 al 24).
+
+    Se conservan intactos los cortes CERRADOS y los que se pagan en una planilla ya cerrada; desde el último de ellos,
+    las ventanas se regeneran contiguas (la primera puede ser de transición) y se mapean al periodo de pago que contiene
+    su cierre. El devengo (periodos de pago 1–15 / 16–fin y su fecha de pago) no cambia.
+    """
+    from apps.payroll.models import PayrollRun  # importación diferida: payroll depende de scheduling
+
+    periods = list(cycle.periods.order_by("period_start"))
+    if not periods:
+        return {"deleted": 0, "created": 0, "kept": 0, "codes": []}
+    closed_periods = set(PayrollRun.objects.filter(pay_period__cycle=cycle, payroll__payroll_status__in=("APPROVED", "PAID"))
+                         .values_list("pay_period_id", flat=True))
+    cutoffs = list(cycle.cutoffs.order_by("cutoff_start"))
+    locked = [c for c in cutoffs if c.status == AttendanceCutoff.Status.CLOSED or c.pay_period_id in closed_periods]
+    anchor = max((c.cutoff_end for c in locked), default=None)
+    keep = [c for c in cutoffs if anchor and c.cutoff_start <= anchor]
+    drop = [c for c in cutoffs if not (anchor and c.cutoff_start <= anchor)]
+    before = {c.pay_period_id: (c.cutoff_start, c.cutoff_end) for c in drop}
+    AttendanceCutoff.objects.filter(pk__in=[c.pk for c in drop]).delete()
+
+    rows = [_period_row(p) for p in periods]
+    codes = {c.code for c in keep}
+    prev_end = anchor
+    created = []
+    for w in engine.cutoff_windows(cycle.rule(), rows):
+        start, end = w["cutoff_start"], w["cutoff_end"]
+        if anchor and end <= anchor:
+            continue
+        if prev_end is not None:
+            start = prev_end + timedelta(days=1)  # contigua (transición desde el último corte conservado)
+        if start > end:
+            continue
+        label = w["period"]["label"]
+        code, n = f"C-{label}", 2
+        while code in codes:
+            code, n = f"C-{label}-{n}", n + 1
+        created.append(AttendanceCutoff.objects.create(cycle=cycle, pay_period_id=w["period"]["id"], code=code,
+                                                       cutoff_start=start, cutoff_end=end))
+        codes.add(code)
+        prev_end = end
+    changed = sum(1 for c in created if before.get(c.pay_period_id) != (c.cutoff_start, c.cutoff_end))
+    if audit and (drop or created):
+        record(
+            "cutoffs_realigned", Category.SCHEDULING,
+            f"Ciclo {cycle.code}: cortes de asistencia realineados a la regla «{cycle.cutoff_rule_description}» "
+            f"({len(created)} cortes abiertos regenerados, {changed} con fechas nuevas; {len(keep)} cerrados o pagados se conservan).",
+            request=request, actor=user, target_type="PayCycle", target_id=cycle.code,
+            details={"anchor": anchor.isoformat() if anchor else None, "created": [c.code for c in created]},
+        )
+    return {"deleted": len(drop), "created": len(created), "changed": changed, "kept": len(keep), "codes": [c.code for c in created]}
+
+
 def preview_cycle(cycle: PayCycle, year: int, limit: int = 4) -> list[dict]:
     """Primeros periodos de pago del año con los cortes que se pagarían en ellos (antes de generarlos)."""
     periods = engine.generate_periods(cycle.rule(), year)

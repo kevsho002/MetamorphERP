@@ -16,6 +16,7 @@ reporte teórico vs real y de los cortes de planilla.
 
 from __future__ import annotations
 
+import logging
 from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -31,6 +32,8 @@ from apps.acd.models import (
 )
 from apps.hcm.models import Employee
 from apps.system.audit import Category, record
+
+logger = logging.getLogger("apps.acd")
 
 MS = timedelta(milliseconds=1)
 MAX_REPORT_DAYS = 31
@@ -264,7 +267,8 @@ def sync_session_time(session: AgentSession, *, user=None) -> AgentSession:
                     created += 1
                     minutes += rec.minutes
                 except DatabaseError as exc:
-                    problems.append(f"{a:%d/%m %H:%M}–{chunk_end:%H:%M}: SQL Server lo rechazó ({str(exc)[:120]})")
+                    logger.warning("acd_time_record_rejected session=%s: %s", session.pk, exc)
+                    problems.append(f"{a:%d/%m %H:%M}–{chunk_end:%H:%M}: el sistema rechazó el registro por una regla de integridad.")
             else:
                 problems.append(f"{a:%d/%m %H:%M}–{chunk_end:%H:%M}: " + " ".join(e["message"] for e in check.errors))
             a = chunk_end

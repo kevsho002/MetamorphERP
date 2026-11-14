@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { leadersApi } from "../api.js";
+import EmployeeAutocomplete from "../../../components/ui/EmployeeAutocomplete.jsx";
 
 /**
  * Cadena de mando en el ROSTER (Fase 18; antes WFM › Jerarquía operativa): Operations Director → Operations Manager →
@@ -149,10 +150,10 @@ export function LeaderNew({ data, leaders, employeeCode = "", fixedEmployee = fa
           </select>
         </label>
         {!fixedEmployee && (
-          <label className="field">
-            <span className="field__label">Colaborador (ID corporativo)</span>
-            <input required value={form.employee_code} placeholder="SV-2026-000001-7" onChange={(e) => setForm({ ...form, employee_code: e.target.value.toUpperCase() })} />
-          </label>
+          <div className="field">
+            <label className="field__label" htmlFor="leader-employee">Colaborador</label>
+            <EmployeeAutocomplete inputId="leader-employee" value={form.employee_code} onChange={(code) => setForm((f) => ({ ...f, employee_code: code }))} />
+          </div>
         )}
         <label className="field">
           <span className="field__label">Reporta a</span>
@@ -179,7 +180,7 @@ export function LeaderNew({ data, leaders, employeeCode = "", fixedEmployee = fa
         </label>
       </div>
       <div className="form-actions form-actions--start">
-        <button type="submit" className="button button--sm" disabled={busy}>
+        <button type="submit" className="button button--sm" disabled={busy || !form.employee_code}>
           Registrar
         </button>
       </div>

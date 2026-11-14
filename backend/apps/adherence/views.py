@@ -58,11 +58,11 @@ from apps.scheduling.services import parse_any_date
 PERMISSIONS = [IsAuthenticated, PasswordChangeNotRequired, HasActionPermission]
 NO_STORE = {"Cache-Control": "no-store"}
 SQL_ERRORS = (
-    ("50070", "SQL Server rechazó el segmento: se traslapa con otro segmento del agente."),
-    ("50071", "SQL Server rechazó la justificación: la AP debe estar aprobada y ser del mismo empleado."),
-    ("50072", "SQL Server rechazó el segmento: la actividad o el cambio exige una AP aprobada del mismo empleado."),
-    ("50073", "SQL Server rechazó el cambio: el Lateness o la ausencia no se elimina ni se mueve; solo se reemplaza con AP."),
-    ("50074", "SQL Server rechazó el segmento: las actividades de asistencia solo las inserta el sistema."),
+    ("50070", "El sistema rechazó el segmento: se traslapa con otro segmento del agente."),
+    ("50071", "El sistema rechazó la justificación: la AP debe estar aprobada y ser del mismo empleado."),
+    ("50072", "El sistema rechazó el segmento: la actividad o el cambio exige una AP aprobada del mismo empleado."),
+    ("50073", "El sistema rechazó el cambio: el Lateness o la ausencia no se elimina ni se mueve; solo se reemplaza con AP."),
+    ("50074", "El sistema rechazó el segmento: las actividades de asistencia solo las inserta el sistema."),
     ("uq_adh_activity_default", "Solo puede haber una actividad predeterminada."),
 )
 
@@ -312,9 +312,10 @@ class GridView(_View):
         d = parse_any_date(p.get("date"))
         if d is None:
             raise services.AdhErrors({"date": "Indique la fecha del turno (AAAA-MM-DD)."})
-        employees = grid.select_grid_employees(p, d)
+        employees, paging = grid.grid_page(p, d)
         data = grid.grid_day(employees, d, p)
-        return Response({**data, "can_manage": Perm.WFM_MANAGE in user_permissions(request.user)}, headers=NO_STORE)
+        return Response({**data, "paging": paging, "can_manage": Perm.WFM_MANAGE in user_permissions(request.user)},
+                        headers=NO_STORE)
 
 
 class AgentHistoryView(_View):

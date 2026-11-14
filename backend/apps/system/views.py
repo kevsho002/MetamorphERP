@@ -174,7 +174,7 @@ class MyAppearanceView(_View):
 
 
 class DataStatsView(_View):
-    """GET /system/data/stats/ — filas y espacio por tabla (dbo.usp_SystemTableStats)."""
+    """GET /system/data/stats/ — filas y espacio por tabla (adm.usp_SystemTableStats)."""
 
     method_permissions = {"get": Perm.SYSTEM_STATUS}
 
@@ -189,3 +189,44 @@ class ErdView(_View):
 
     def get(self, request):
         return Response(datamodel.erd(), headers=NO_STORE)
+
+
+# ================================================================ Fase 25
+class SystemOverviewView(_View):
+    """GET /system/overview/ — sesiones activas en tiempo real y recuento de usuarios (Administrador)."""
+
+    method_permissions = {"get": Perm.SYSTEM_STATUS}
+
+    def get(self, request):
+        from apps.system import overview
+
+        return Response(overview.snapshot(request), headers=NO_STORE)
+
+
+class SessionCloseView(_View):
+    """POST /system/sessions/<id>/close/ — cierra una sesión activa (no la propia)."""
+
+    method_permissions = {"post": Perm.SYSTEM_STATUS}
+
+    def post(self, request, pk):
+        from apps.system import overview, sessions
+        from apps.system.models import UserSession
+
+        s = UserSession.objects.filter(pk=pk, ended_at__isnull=True).select_related("user").first()
+        if s is None:
+            return Response({"detail": "La sesión ya no está activa."}, status=404)
+        if s.session_key == request.session.session_key:
+            return Response({"detail": "No puede cerrar su propia sesión desde aquí: use «Cerrar sesión»."}, status=409)
+        sessions.end_sessions(UserSession.objects.filter(pk=s.pk), sessions.Reason.ADMIN)
+        record("sessions_closed", Category.AUTH, f"Sesión de «{s.user.username}» cerrada desde Estado del sistema.",
+               request=request, target_type="user_session", target_id=str(s.pk), details={"usuarios": [s.user.username], "cantidad": 1})
+        return Response({"feedback": f"Sesión de {s.user.username} cerrada.", **overview.snapshot(request)}, headers=NO_STORE)
+
+
+class SqlObjectsView(_View):
+    """GET /system/data/objects/ — catálogo de vistas, procedimientos almacenados, funciones y triggers (Fase 25)."""
+
+    method_permissions = {"get": Perm.SYSTEM_STATUS}
+
+    def get(self, request):
+        return Response(datamodel.sql_objects(), headers=NO_STORE)

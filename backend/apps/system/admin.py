@@ -14,8 +14,8 @@ from apps.system.models import AuditEvent, PlatformSettings, UserSession
 
 _AUDITED_FIELDS = (
     "idle_timeout_minutes", "max_session_hours", "max_sessions_per_user", "idle_warning_seconds",
-    "maintenance_mode", "maintenance_message", "announcement", "announcement_level", "max_document_mb",
-    "brand_palette", "brand_accent", "ap_full_scope_roles",
+    "maintenance_mode", "maintenance_message", "announcement", "announcement_level", "max_document_mb", "max_attachment_mb",
+    "brand_palette", "brand_accent", "ap_full_scope_roles", "max_failed_logins",
 )
 
 
@@ -26,11 +26,12 @@ class PlatformSettingsAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Parámetros de sesión",
-            {"fields": ("idle_timeout_minutes", "idle_warning_seconds", "max_session_hours", "max_sessions_per_user")},
+            {"fields": ("idle_timeout_minutes", "idle_warning_seconds", "max_session_hours", "max_sessions_per_user",
+                        "max_failed_logins")},
         ),
         (
             "Control del cliente web",
-            {"fields": ("maintenance_mode", "maintenance_message", "announcement", "announcement_level", "max_document_mb")},
+            {"fields": ("maintenance_mode", "maintenance_message", "announcement", "announcement_level", "max_document_mb", "max_attachment_mb")},
         ),
         ("Apariencia corporativa (Fases 22 y 23)", {"fields": ("brand_palette", "brand_accent"),
                                                     "description": "Paleta global por defecto del ERP y de este panel; cada usuario "

@@ -17,8 +17,9 @@ migración 0002 con la convención FK_ del proyecto.
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.common.models import Country
 from apps.hcm.models import Employee
 
@@ -54,7 +55,7 @@ class AttributeDefinition(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "hcm_attribute_definition"
+        db_table = sql_table("hcm", "hcm_attribute_definition")
         ordering = ["code"]
         verbose_name = "atributo dinámico"
         verbose_name_plural = "atributos dinámicos"
@@ -104,7 +105,7 @@ class EmployeeTemplate(models.Model):
     objects = EmployeeTemplateQuerySet.as_manager()
 
     class Meta:
-        db_table = "hcm_employee_template"
+        db_table = sql_table("hcm", "hcm_employee_template")
         ordering = ["country_id", "-effective_date"]
         verbose_name = "plantilla de empleado por país"
         verbose_name_plural = "plantillas de empleado por país"
@@ -156,7 +157,7 @@ class EmployeeAttributeValue(models.Model):
     updated_by = models.CharField("actualizado por", max_length=150, blank=True)
 
     class Meta:
-        db_table = "hcm_employee_attribute_value"
+        db_table = sql_table("hcm", "hcm_employee_attribute_value")
         ordering = ["employee_id", "attribute__code"]
         verbose_name = "valor de atributo dinámico"
         verbose_name_plural = "valores de atributos dinámicos"
@@ -226,7 +227,7 @@ class ImportBatch(models.Model):
     finished_at = models.DateTimeField("fin")
 
     class Meta:
-        db_table = "hcm_import_batch"
+        db_table = sql_table("hcm", "hcm_import_batch")
         ordering = ["-started_at"]
         verbose_name = "carga masiva de empleados"
         verbose_name_plural = "cargas masivas de empleados"
@@ -282,7 +283,7 @@ class ImportBatchRow(models.Model):
     raw_data = models.JSONField("datos recibidos", default=dict, blank=True)
 
     class Meta:
-        db_table = "hcm_import_batch_row"
+        db_table = sql_table("hcm", "hcm_import_batch_row")
         ordering = ["batch_id", "row_number"]
         verbose_name = "fila de carga masiva"
         verbose_name_plural = "filas de carga masiva"
@@ -331,7 +332,7 @@ class Bank(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "hcm_bank"
+        db_table = sql_table("hcm", "hcm_bank")
         ordering = ["country_id", "display_order", "name"]
         verbose_name = "banco"
         verbose_name_plural = "bancos"

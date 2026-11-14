@@ -96,7 +96,7 @@ export default function HoursReportPage() {
           <h1 className="page-title">Horas teóricas vs reales</h1>
           <p className="muted page-subtitle">
             Cada hora cuenta en el día calendario en que ocurrió: un turno de 22:00 a 06:00 aporta 2 h a su fecha de inicio y 6 h
-            al día siguiente, y ambas porciones conservan la fecha del turno. Fuente en SQL: <code>dbo.vw_SchTimeByOccurrenceDate</code>.
+            al día siguiente, y ambas porciones conservan la fecha del turno.
           </p>
         </div>
         <a className="button button--ghost" href={schedulingApi.reportCsvUrl(query)} download>

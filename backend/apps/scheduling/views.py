@@ -73,16 +73,16 @@ def _employee(code: str) -> Employee:
 def _sql_error(exc: DatabaseError) -> Response:
     text = str(exc)
     for number, message in (
-        ("50040", "SQL Server rechazó el horario: se traslapa con otro horario activo del empleado."),
-        ("50041", "SQL Server rechazó el registro: se traslapa con otro registro de tiempo del empleado."),
-        ("50042", "SQL Server rechazó la regla: ya hay otra regla de nocturnidad activa para el país en esas fechas."),
-        ("50043", "SQL Server rechazó el periodo de pago: se traslapa con otro periodo de pago del ciclo."),
-        ("50044", "SQL Server rechazó el corte: su ventana de asistencia se traslapa con la de otro corte del ciclo."),
-        ("50045", "SQL Server rechazó el periodo de pago: debe iniciar el día siguiente al fin del periodo anterior (sin huecos ni colisiones)."),
-        ("50046", "SQL Server rechazó el corte: debe iniciar el día siguiente al cierre del corte anterior (sin huecos ni colisiones)."),
-        ("50047", "SQL Server rechazó la regla: ya hay otra regla de almuerzo activa del país con el mismo umbral en esas fechas."),
-        ("50048", "SQL Server rechazó el corte: se mapea al periodo de pago de su ciclo que contiene su fecha de cierre."),
-        ("50049", "SQL Server rechazó el cambio: el corte está cerrado; reábralo antes de modificar sus fechas."),
+        ("50040", "El sistema rechazó el horario: se traslapa con otro horario activo del empleado."),
+        ("50041", "El sistema rechazó el registro: se traslapa con otro registro de tiempo del empleado."),
+        ("50042", "El sistema rechazó la regla: ya hay otra regla de nocturnidad activa para el país en esas fechas."),
+        ("50043", "El sistema rechazó el periodo de pago: se traslapa con otro periodo de pago del ciclo."),
+        ("50044", "El sistema rechazó el corte: su ventana de asistencia se traslapa con la de otro corte del ciclo."),
+        ("50045", "El sistema rechazó el periodo de pago: debe iniciar el día siguiente al fin del periodo anterior (sin huecos ni colisiones)."),
+        ("50046", "El sistema rechazó el corte: debe iniciar el día siguiente al cierre del corte anterior (sin huecos ni colisiones)."),
+        ("50047", "El sistema rechazó la regla: ya hay otra regla de almuerzo activa del país con el mismo umbral en esas fechas."),
+        ("50048", "El sistema rechazó el corte: se mapea al periodo de pago de su ciclo que contiene su fecha de cierre."),
+        ("50049", "El sistema rechazó el cambio: el corte está cerrado; reábralo antes de modificar sus fechas."),
     ):
         if number in text:
             return Response({"detail": message, "code": f"sql_{number}"}, status=status.HTTP_409_CONFLICT)

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { todayIso } from "../../hcm/lib/format.js";
 import { adhApi, fmtHM, fmtPct, hhmm } from "../api.js";
 import Timeline from "../components/Timeline.jsx";
+import EmployeeAutocomplete from "../../../components/ui/EmployeeAutocomplete.jsx";
 
 const KPIS = [
   ["adherence_pct", "Adherencia", "pct"],
@@ -94,8 +95,7 @@ export default function AdherencePage() {
           <h1 className="page-title">Adherencia</h1>
           <p className="muted page-subtitle">
             Segmentos programados por WFM vs estados reales del ACD / Web Timer, por fecha de turno. Dentro del contenedor el tiempo en estado pagado es válido
-            para pago; fuera de él, sin AP que lo justifique, es Unpaid Excess Login. Fuentes en SQL: <code>dbo.vw_AdhAdherenceDay</code> y{" "}
-            <code>dbo.vw_AdhDeviation</code>.
+            para pago; fuera de él, sin AP que lo justifique, es Unpaid Excess Login.
           </p>
         </div>
         {catalogs?.can_manage && (
@@ -126,11 +126,11 @@ export default function AdherencePage() {
             ))}
           </select>
         </label>
-        <label className="field">
-          <span className="field__label">Agente (ID)</span>
-          <input type="search" defaultValue={filters.employee} placeholder="SV-2026-000001-7"
-            onKeyDown={(e) => e.key === "Enter" && update({ employee: e.currentTarget.value.trim().toUpperCase() })} />
-        </label>
+        <div className="field">
+          <label className="field__label" htmlFor="adh-employee">Agente</label>
+          <EmployeeAutocomplete inputId="adh-employee" scope="acd" value={filters.employee} onChange={(code) => update({ employee: code })}
+            placeholder="Nombre o ID del agente…" />
+        </div>
       </div>
 
       {notice && (

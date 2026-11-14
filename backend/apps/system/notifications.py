@@ -135,6 +135,18 @@ def _no_shows(perms, team: set[int], today) -> list[dict]:
     return out
 
 
+def _announcements(user, today) -> list[dict]:
+    from apps.communications.services import pending_for
+
+    out = []
+    for a in pending_for(user):
+        overdue = bool(a.ack_due_date and today > a.ack_due_date)
+        due = f" · plazo {a.ack_due_date:%d/%m/%Y}" if a.ack_due_date else ""
+        out.append(_item(f"com:{a.pk}", "announcement", "Comunicado con acuse de recibo" + (" VENCIDO" if overdue else " pendiente"),
+                         f"{a.title}{due}", f"/announcements/{a.pk}", a.published_at, "error" if overdue else "warn"))
+    return out
+
+
 def for_user(user) -> dict:
     perms = user_permissions(user)
     today = timezone.localdate()
@@ -147,6 +159,7 @@ def for_user(user) -> dict:
     if Perm.HCM_VIEW in perms or team:
         items += _new_hires(user, perms, team, today)
     items += _no_shows(perms, team, today)
+    items += _announcements(user, today)  # Fase 25: acuses de recibo pendientes
     read = set(NotificationRead.objects.filter(user=user, key__in=[i["key"] for i in items]).values_list("key", flat=True))
     for i in items:
         i["read"] = i["key"] in read

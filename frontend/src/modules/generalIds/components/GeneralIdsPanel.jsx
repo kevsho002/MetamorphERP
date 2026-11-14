@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { formatDate, todayIso } from "../../hcm/lib/format.js";
 import { generalIdsApi } from "../api.js";
 import { useGeneralIdCatalogs } from "../hooks/useGeneralIdCatalogs.js";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 const EMPTY = { id_type: "", value: "", client: "", brand: "", effective_start: "", effective_end: "", notes: "" };
 
@@ -256,10 +257,10 @@ function GeneralIdEditor({ code, catalogs, row, defaultStart, onCancel, onSaved 
               <small className="field__error">{errorsFor("id_type")}</small>
             ) : (
               type && (
-                <small className="field__hint">
+                <FieldHint>
                   {type.scope_level_label}
                   {type.allow_multiple_active ? " · admite varios vigentes" : " · uno vigente a la vez"}
-                </small>
+                </FieldHint>
               )
             )}
           </div>
@@ -280,7 +281,7 @@ function GeneralIdEditor({ code, catalogs, row, defaultStart, onCancel, onSaved 
             {errorsFor("value") ? (
               <small className="field__error">{errorsFor("value")}</small>
             ) : (
-              type?.pattern_message && <small className="field__hint">{type.pattern_message}</small>
+              type?.pattern_message && <FieldHint>{type.pattern_message}</FieldHint>
             )}
           </div>
           {type && type.scope_level !== "GLOBAL" && (
@@ -305,7 +306,7 @@ function GeneralIdEditor({ code, catalogs, row, defaultStart, onCancel, onSaved 
                 {errorsFor("client") ? (
                   <small className="field__error">{errorsFor("client")}</small>
                 ) : (
-                  !type.applies_to.all && <small className="field__hint">Solo los clientes a los que aplica este tipo de ID.</small>
+                  !type.applies_to.all && <FieldHint>Solo los clientes a los que aplica este tipo de ID.</FieldHint>
                 )}
               </div>
               <div className="field">
@@ -359,7 +360,7 @@ function GeneralIdEditor({ code, catalogs, row, defaultStart, onCancel, onSaved 
             {errorsFor("effective_end") ? (
               <small className="field__error">{errorsFor("effective_end")}</small>
             ) : (
-              <small className="field__hint">Vacío = «Now» (vigente sin fecha de fin).</small>
+              <FieldHint>Vacío = «Now» (vigente sin fecha de fin).</FieldHint>
             )}
           </div>
           <div className="field">

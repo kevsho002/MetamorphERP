@@ -149,6 +149,11 @@ class EmployeeInput:
     seventh_day_penalty: bool | None = None  # regla de la cuenta; None = la de los parámetros
     account: str = ""
     actions: list[ActionItem] = field(default_factory=list)
+    # Fase 25: insumos POR DÍA (boleta diaria). {fecha: {scheduled, worked, paid, night, vacation, lateness, absence,
+    # holiday}} y las fechas de suspensión; employed_windows = ventanas del corte dentro de la relación laboral.
+    days: dict = field(default_factory=dict)
+    suspended_dates: set = field(default_factory=set)
+    employed_windows: list | None = None  # None = sin dato (todo el corte); [] = corte entero fuera de la relación laboral
 
 
 @dataclass
@@ -455,3 +460,105 @@ def calculate(inp: EmployeeInput, params: Params, rules: list[LegalRule], concep
         net_pay=net, employer_contributions=q2(employer), overtime_amount=overtime, other_earnings=max(ZERO, other_earnings),
         warnings=warnings,
     )
+
+
+# ================================================================ Fase 25: boleta diaria
+def allocate(total: Decimal, weights: dict) -> dict:
+    """Reparte `total` (2 decimales, con signo) entre las claves según su peso, al centavo y SIN diferencias de redondeo
+    (método del mayor residuo): la suma de las partes es exactamente `total`."""
+    total = q2(total)
+    positive = {k: w for k, w in weights.items() if w > 0}
+    if not positive or total == 0:
+        return {k: ZERO for k in weights}
+    sign = -1 if total < 0 else 1
+    cents = int(abs(total) * 100)
+    wsum = sum(positive.values())
+    raw = {k: Decimal(cents) * Decimal(w) / Decimal(wsum) for k, w in positive.items()}
+    base = {k: int(v) for k, v in raw.items()}
+    rest = cents - sum(base.values())
+    for k in sorted(raw, key=lambda k: (raw[k] - base[k], str(k)), reverse=True)[:rest]:
+        base[k] += 1
+    return {k: (Decimal(sign * base.get(k, 0)) / 100).quantize(Decimal("0.01")) for k in weights}
+
+
+DAY_LABELS = {
+    "WORKED": "Laborado", "PARTIAL": "Laborado parcial", "HOLIDAY": "Feriado laborado", "VACATION": "Vacaciones",
+    "ABSENCE": "Ausencia injustificada", "UNPAID": "Programado sin pago", "REST": "Descanso", "SUSPENDED": "Suspensión",
+    "OUTSIDE": "Fuera de la relación laboral",
+}
+
+
+def daily_breakdown(inp: EmployeeInput, result: Result, windows: list[tuple[date, date]]) -> list[dict]:
+    """Cada fecha de los cortes con sus horas y la traducción EXACTA a dinero de las líneas por tiempo de la boleta.
+
+    * Salario por horas (SALARIO): rate × horas pagables regulares del día.
+    * Vacaciones gozadas, nocturnidad: por las horas del día.  · Feriado laborado: el recargo de ese día.
+    * Séptimo día: el descuento se reparte entre los días de Unjustified Absence que lo originaron.
+    Los montos se reparten al centavo desde las líneas: Σ días = líneas por tiempo de la boleta.
+    """
+    from datetime import timedelta
+
+    by_code: dict[str, Decimal] = {}
+    for ln in result.lines:
+        if ln.code in ("SALARIO", "VACACIONES_GOCE", "NOCTURNIDAD", "SEPTIMO_DIA"):
+            by_code[ln.code] = by_code.get(ln.code, ZERO) + ln.amount
+    dates: list[date] = []
+    for a, b in windows:
+        d = a
+        while d <= b:
+            dates.append(d)
+            d += timedelta(days=1)
+    info = {d: inp.days.get(d, {}) for d in dates}
+    regular = allocate(by_code.get("SALARIO", ZERO), {d: max(0, i.get("paid", 0) - i.get("vacation", 0)) for d, i in info.items()})
+    vacation = allocate(by_code.get("VACACIONES_GOCE", ZERO), {d: i.get("vacation", 0) for d, i in info.items()})
+    night = allocate(by_code.get("NOCTURNIDAD", ZERO), {d: i.get("night", 0) for d, i in info.items()})
+    absences = set(inp.absence_dates)
+    seventh = allocate(by_code.get("SEPTIMO_DIA", ZERO), {d: (1 if d in absences else 0) for d in dates})
+    holiday: dict[date, Decimal] = {}
+    for ln in result.lines:
+        if ln.code == "FERIADO":
+            hol = next((h for h in inp.holidays if f"({h.date:%d/%m})" in ln.label and h.date not in holiday), None)
+            if hol is not None:
+                holiday[hol.date] = ln.amount
+    out = []
+    for d in dates:
+        i = info[d]
+        employed = inp.employed_windows is None or any(a <= d <= b for a, b in inp.employed_windows)
+        sch, paid, vac = i.get("scheduled", 0), i.get("paid", 0), i.get("vacation", 0)
+        if not employed:
+            kind = "OUTSIDE"
+        elif d in inp.suspended_dates:
+            kind = "SUSPENDED"
+        elif vac:
+            kind = "VACATION"
+        elif i.get("holiday") and paid > 0:
+            kind = "HOLIDAY"
+        elif sch == 0 and paid == 0:
+            kind = "REST"
+        elif d in absences or i.get("absence"):
+            kind = "ABSENCE"
+        elif paid == 0:
+            kind = "UNPAID"
+        elif paid < sch:
+            kind = "PARTIAL"
+        else:
+            kind = "WORKED"
+        notes = []
+        if i.get("holiday"):
+            notes.append(f"Feriado: {i['holiday']}")
+        if i.get("lateness"):
+            notes.append(f"Lateness {q2(hours(i['lateness']))} h")
+        if kind == "PARTIAL":
+            notes.append(f"{q2(hours(sch - paid))} h programadas no pagadas")
+        if seventh[d]:
+            notes.append("Descuento de séptimo día (semana con Unjustified Absence)")
+        amounts = {"regular": regular[d], "vacation": vacation[d], "night": night[d], "holiday": holiday.get(d, ZERO),
+                   "discount": seventh[d]}
+        out.append({
+            "date": d, "day_type": kind, "label": DAY_LABELS[kind], "holiday_name": i.get("holiday") or "",
+            "scheduled_seconds": sch, "worked_seconds": i.get("worked", 0), "paid_seconds": paid,
+            "night_seconds": i.get("night", 0), "vacation_seconds": vac, "lateness_seconds": i.get("lateness", 0),
+            **{f"{k}_amount": v for k, v in amounts.items()}, "total_amount": q2(sum(amounts.values(), ZERO)),
+            "notes": "; ".join(notes)[:300],
+        })
+    return out

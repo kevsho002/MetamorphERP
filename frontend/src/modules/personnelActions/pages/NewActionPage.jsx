@@ -3,8 +3,10 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { todayIso } from "../../hcm/lib/format.js";
 import { actionsApi } from "../api.js";
 import EmployeePicker from "../components/EmployeePicker.jsx";
+import { AttachmentQueue, uploadQueue } from "../components/Attachments.jsx";
 import RehireAlert from "../components/RehireAlert.jsx";
 import WeeklyScheduleEditor, { defaultSchedule, scheduleFromSummary, scheduleInput } from "../components/WeeklyScheduleEditor.jsx";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 /** Asignación ADICIONAL (Fase 10): parte de un bloque corto el sábado; se suma al horario principal. */
 const defaultAdditional = () => ({
@@ -83,10 +85,10 @@ function AttributeField({ attr, value, onChange, error, context }) {
         <small className="field__error">{message}</small>
       ) : (
         (attr.help_text || current) && (
-          <small className="field__hint">
+          <FieldHint>
             {current && `Vigente: ${current}. `}
             {attr.help_text}
-          </small>
+          </FieldHint>
         )
       )}
     </label>
@@ -119,6 +121,7 @@ export default function NewActionPage() {
   const [employee, setEmployee] = useState(null);
   const [busy, setBusy] = useState(null);
   const [result, setResult] = useState(null);
+  const [files, setFiles] = useState([]); // Fase 24: evidencias en cola
 
   useEffect(() => {
     const controller = new AbortController();
@@ -200,8 +203,22 @@ export default function NewActionPage() {
       if (mode === "validate") {
         setResult(await actionsApi.validate(payload(false)));
       } else {
-        const body = await actionsApi.create(payload(mode === "submit"));
-        navigate(`/personnel-actions/${body.action.folio}`, { state: { feedback: body.feedback } });
+        // Fase 24: con adjuntos, la AP se crea en borrador, se suben las evidencias y luego se envía (así una AP sin
+        // firmas no queda aprobada —y congelada— antes de tener sus respaldos).
+        const body = await actionsApi.create(payload(mode === "submit" && files.length === 0));
+        let feedback = body.feedback;
+        if (files.length) {
+          const errors = await uploadQueue(body.action.folio, files);
+          feedback += errors.length ? ` No se adjuntaron: ${errors.join(" · ")}` : ` ${files.length} adjunto(s) agregados.`;
+          if (mode === "submit") {
+            try {
+              feedback = `${(await actionsApi.submit(body.action.folio)).feedback} ${files.length - errors.length} adjunto(s).`;
+            } catch (err) {
+              feedback += ` Quedó en borrador: ${err.message}`;
+            }
+          }
+        }
+        navigate(`/personnel-actions/${body.action.folio}`, { state: { feedback } });
       }
     } catch (err) {
       setResult(err.body && typeof err.body === "object" ? { valid: false, ...err.body } : { valid: false, errors: [{ message: err.message }] });
@@ -242,10 +259,10 @@ export default function NewActionPage() {
               ))}
             </select>
             {type && (
-              <small className="field__hint">
+              <FieldHint>
                 {type.description}
                 {type.creator_roles_labels?.length > 0 && ` · La elaboran: ${type.creator_roles_labels.join(", ")}.`}
-              </small>
+              </FieldHint>
             )}
           </label>
           <div className="field">
@@ -261,10 +278,10 @@ export default function NewActionPage() {
               error={employee?.error ?? (errorsFor.employee_code ?? []).map((e) => e.message).join(" ")}
             />
             {employee && !employee.error && (
-              <small className="field__hint">
+              <FieldHint>
                 {employee.country} · ingreso {employee.hire_date}
                 {!employee.initial_action && " · sin Primera AP de horario"}
-              </small>
+              </FieldHint>
             )}
           </div>
           <label className="field">
@@ -272,12 +289,12 @@ export default function NewActionPage() {
               Fecha efectiva<span className="field__req">*</span>
             </span>
             <input type="date" value={form.effective_date} onChange={(e) => set({ effective_date: e.target.value })} readOnly={type?.is_initial_schedule} required />
-            {type?.is_initial_schedule && <small className="field__hint">La Primera AP rige desde la fecha de ingreso.</small>}
+            {type?.is_initial_schedule && <FieldHint>La Primera AP rige desde la fecha de ingreso.</FieldHint>}
             {type?.schedule_mode === "ADDITIONAL" && (
-              <small className="field__hint">
+              <FieldHint>
                 Asignación adicional: se suma al horario principal (turno partido o doble asignación) hasta «Vigente hasta»; sus bloques no
                 pueden pedir las mismas horas que otro horario.
-              </small>
+              </FieldHint>
             )}
           </label>
         </div>
@@ -314,6 +331,10 @@ export default function NewActionPage() {
             {type.admin_signs_any_step === false && " · firma estricta: cada paso lo firma únicamente su rol"}
           </p>
         )}
+        <fieldset className="form-section attach-fieldset">
+          <legend className="field__label">Adjuntos de respaldo (opcional)</legend>
+          <AttachmentQueue files={files} onChange={setFiles} disabled={Boolean(busy)} />
+        </fieldset>
         <RehireAlert alert={rehireAlert} acknowledged={acknowledged} onAcknowledge={setAcknowledged} />
         {result && (
           <div className={`alert ${result.valid ? "alert--ok" : "alert--error"}`} role="status">

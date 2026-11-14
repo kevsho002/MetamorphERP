@@ -26,6 +26,8 @@ En producción Django sirve también el build de React (un solo despliegue, mism
 | 21 | Refinamiento operativo y nómina avanzada: menú con flechas ▲/▼, tiempos en HH:MM:SS u horas decimales, suspensiones (antigüedad congelada), terminación con indicador de recontratación, reingreso con alerta formal, roles por tipo de AP; motor de planilla 100 % por horas (estándar BPO) con pre-cierre, boletas preliminares y excepciones; séptimo opcional por cuenta; calendario de feriados con Holiday Segments; liquidaciones e indemnizaciones con lotes de pago y cheques |
 | 22 | Optimización final: Apariencia (día / noche, paleta, tiempos), chevrons, retiro del mock de asistencias, centro de notificaciones, justificaciones y permisos con / sin goce como AP, roster automático por AP, planilla por cortes con prorrateo, tipos de contrato del Excel de referencia, boletas en PDF, moneda por país, estadísticas de datos y ERD interactivo |
 | 23 | Seguridad jerárquica y marca: selector de colaboradores por jerarquía (SQL `fn_EmployeesUnderLeader`) en las AP, paleta dual (global y personal en el perfil), Django Admin con la misma paleta y logos, calendario de feriados interactivo (mes / año, copia de año con Semana Santa) y los tres logos corporativos en barra, documentos / PDF y favicons |
+| 24 | Anuncios y evidencias: el logotipo lleva a los anuncios corporativos (maqueta), la planilla cuenta la asistencia en los cortes internos 25–9 / 10–24 (realineación de cortes abiertos) y las AP admiten adjuntos (imágenes, PDF, Office) con pestañas de evidencias y auditoría |
+| 25 | Cierre y gobernanza: sesiones y usuarios en vivo en Estado del sistema (bloqueo por intentos, gestión de cuentas en `/admin/`), SQL Server en esquemas por módulo (`sec`, `adm`, `hcm`, `org`, `wfm`, `acd`, `pa`, `fin`, `com`) con catálogo de vistas / SP / triggers, periódico virtual con acuse de recibo y compliance, y boleta desglosada por día de los cortes internos |
 
 ```
 MetamorphERP/
@@ -121,6 +123,8 @@ MetamorphERP/
 | Tablas | Origen | En Django |
 |--------|--------|-----------|
 | `core.*`, `hcm.*`, `fin.*` | `database/scripts` (SQL-first) | modelos `managed = False` |
+| **Fase 25:** todas las tablas, vistas, SP, funciones y triggers del ERP pasan de `dbo` a su esquema de módulo (`system/0015`); las filas siguientes muestran el **prefijo original** | migraciones de Django | `db_table = "[esquema].[tabla]"` |
+| `com.com_announcement`, `com_announcement_ack`, `com_compliance_snapshot` (triggers 50120–50124, vista `vw_AnnouncementCompliance`, SP `usp_AnnouncementComplianceReport`); `fin.pay_payroll_day` (trigger 50099, vista `vw_PayPayrollDay`); `adm.vw_SystemSqlObject` | migraciones de Django (Fase 25) | modelos administrados |
 | `dbo.accounts_customuser`, `auth_*`, `django_session`, `django_admin_log`, `django_content_type` | migraciones de Django | modelos administrados |
 | `dbo.hcm_attribute_definition`, `hcm_employee_template`, `hcm_employee_attribute_value`, `hcm_import_batch`, `hcm_import_batch_row` | migraciones de Django (Fase 3) | modelos administrados |
 | `dbo.sys_platform_settings`, `sys_user_session`, `sys_audit_event` | migraciones de Django (Fase 5) | modelos administrados |
@@ -130,6 +134,7 @@ MetamorphERP/
 | `dbo.acd_division`, `acd_primary_status`, `acd_aux_code`, `acd_agent_group`, `acd_group_aux`, `acd_agent_member`, `acd_agent_session`, `acd_status_segment`; vistas `vw_AcdStatusSegment`, `vw_AcdAgentSession` | migraciones de Django (Fase 11) | modelos administrados |
 | `dbo.pa_action_type`, `pa_action_attribute`, `pa_approval_step`, `pa_action`, `pa_action_value`, `pa_action_signature`, `pa_folio_sequence`; vista `vw_PersonnelAction` | migraciones de Django (Fase 9) | modelos administrados |
 | `dbo.pay_setting`, `pay_concept`, `pay_payroll_run`, `pay_payroll_line`, `pay_payslip_batch`, `pay_payslip`; vistas `vw_PayPayrollDetail`, `vw_PayPayslipInventory`; triggers sobre `fin.Payroll` / `fin.PayrollDetail` / `fin.PayrollDeduction` | migraciones de Django (Fase 20) | modelos administrados |
+| `dbo.pa_action_attachment` (triggers 50110–50113, vista `vw_PaActionAttachment`) | migraciones de Django (Fase 24) | modelos administrados |
 | `dbo.sys_user_preference`; función `fn_EmployeesUnderLeader`, `fn_EasterSunday`; procedimiento `usp_HolidayCopyYear`; vista `vw_HolidayCalendar` | migraciones de Django (Fase 23) | modelos administrados |
 | `dbo.sys_notification_read`; procedimientos `usp_SystemTableStats`, `usp_SystemTableColumns`; vista `vw_SystemForeignKeys` | migraciones de Django (Fase 22) | modelos administrados |
 | `dbo.pa_employment_event`, `hol_holiday`, `hol_holiday_segment`, `pay_account_rule`, `pay_payroll_iteration`, `pay_payroll_exception`, `pay_settlement`, `pay_settlement_line`, `pay_settlement_batch`; vistas `vw_EmployeeTenure`, `vw_HolidaySegment`, `vw_PaySettlement` | migraciones de Django (Fase 21) | modelos administrados |
@@ -1206,6 +1211,140 @@ antes WFM › Jerarquía operativa).
   * `app_header_logo.png` (letras blancas) → barra superior del ERP y del Django Admin (y el acceso en modo noche);
   * `doc_header_logo.png` (fondo blanco) → cabecera de las boletas (pantalla, impresión y **PDF**), los cheques de
     liquidación y el acceso en modo día. Los documentos se ven siempre como papel blanco, también en modo noche.
+
+## Anuncios, planilla por cortes internos y evidencias en las AP (Fase 24)
+
+* **Logotipo → Anuncios de la empresa** (`/announcements`): el logotipo de la barra superior y el inicio (`/`) llevan a la
+  página de comunicados corporativos (visible para todo usuario). Es una **maqueta temporal**: el aviso general vigente
+  (`/admin/` › Parámetros) es real; los comunicados son contenido de ejemplo del frontend (no se guardan en la base) hasta
+  que exista el módulo de comunicaciones.
+* **Planilla alineada a los cortes internos** del ciclo predeterminado: las horas efectivas, *actuals* y cumplimiento se
+  cuentan **del 25 al 9 y del 10 al 24**; el devengo y la fecha de pago siguen en la quincena 1–15 / 16–fin que contiene
+  el cierre del corte. La migración `scheduling/0010` fija la regla (inicio 10, fin de la primera ventana 24) en los ciclos
+  quincenales predeterminados que derivaban el corte del periodo y **realinea sus cortes abiertos**
+  (`scheduling.services.realign_cutoffs`, también como acción del admin «Realinear los cortes abiertos a la regla del
+  ciclo»): los cortes cerrados o pagados en una planilla cerrada no se tocan y la primera ventana nueva es de transición.
+  La elegibilidad de la planilla incluye a quien solo laboró dentro del corte (p. ej. se retiró el 28 y el corte 25–9 se
+  paga en la quincena siguiente). **Recalcule las planillas abiertas** después de realinear.
+* **Adjuntos en las AP** (`pa_action_attachment`): imágenes PNG / JPG, PDF y documentos de Office (DOCX, XLSX, DOC, XLS),
+  validados por extensión, tamaño (`/admin/` › Parámetros › `max_attachment_mb`, 10 MB por defecto) y **firma binaria**;
+  bytes originales en el almacenamiento privado con su SHA-256. Se adjuntan al elaborar la AP (se suben antes de enviarla
+  a aprobación) o desde el detalle mientras está en borrador o en aprobación (quien la elabora o quien firma el paso en
+  curso). Nunca se borran: se **retiran con motivo**. En SQL Server: sin DELETE (50110), sin adjuntos en AP resueltas o
+  anuladas (50111), contenido inmutable (50112), retiro con motivo e irreversible (50113); vista
+  `dbo.vw_PaActionAttachment`. API: `POST /personnel-actions/{folio}/attachments/`,
+  `GET /personnel-actions/attachments/{id}/content/` (`?download=1`), `POST /personnel-actions/attachments/{id}/remove/`.
+* **Detalle de la AP con pestañas** (como el expediente): **Detalle**, **Evidencias** (miniaturas, categoría, tamaño,
+  SHA-256, quién y en qué etapa se adjuntó, retirados), **Firmas** (cadena con verificación) y **Auditoría** (bitácora de
+  la AP: elaboración, envío, firmas, adjuntos, aplicación y anulación, con usuario, fecha e IP, y el sello SHA-256). Los
+  listados de AP (general y del expediente del colaborador) muestran cuántas evidencias tiene cada una.
+
+## Cierre: sesiones, esquemas por módulo, periódico virtual y boleta diaria (Fase 25)
+
+* **Estado del sistema › Usuarios y sesiones** (Administrador, se actualiza cada 15 s): sesiones activas en tiempo real
+  (usuario, rol, IP, navegador, inicio, última actividad e inactividad, con «Cerrar sesión»), usuarios totales, activos,
+  bloqueados, inactivos y con cambio de contraseña pendiente, intentos fallidos y bloqueos de las últimas 24 h, la política
+  de sesión vigente y enlaces al panel. API: `GET /system/overview/`, `POST /system/sessions/{id}/close/`.
+* **Bloqueo de cuentas**: tras N contraseñas incorrectas consecutivas (`/admin/` › Parámetros › `max_failed_logins`, 5 por
+  defecto; 0 = no bloquear) la cuenta queda **bloqueada** (`locked_at`, `lock_reason`) y sus sesiones se cierran; no entra
+  ni con la contraseña correcta (backend `apps.accounts.backends.LockAwareModelBackend`). Todo queda en la auditoría.
+* **Usuarios en el panel de Django** (`/admin/accounts/customuser/`): se editan nombre, correo, rol, cuenta activa, cambio
+  de contraseña obligatorio y bloqueo (con motivo); filtros por acceso (bloqueadas, inactivas, cambio pendiente, con sesión
+  activa) y acciones masivas (desbloquear, bloquear, exigir cambio de contraseña, cerrar sesiones, activar / desactivar).
+  Mismas reglas que la API: roles otorgables según quien edita, nunca sobre la propia cuenta, nunca sin un administrador
+  activo y solo un superusuario gestiona otro superusuario. Las cuentas se siguen **creando** desde la aplicación.
+* **Esquemas por módulo en SQL Server** (`system/0015_phase25_module_schemas`, reversible): las tablas se mueven con
+  `ALTER SCHEMA … TRANSFER` (índices, FK, restricciones y triggers incluidos) y las vistas, procedimientos, funciones y
+  triggers se recrean en su esquema con sus referencias reescritas. `sec` seguridad · `adm` plataforma · `hcm` capital
+  humano y General IDs · `org` estructura operativa y roster · `wfm` horarios, tiempo, cortes, feriados y adherencia ·
+  `acd` ACD · `pa` acciones de personal · `fin` planillas · `com` comunicados · `core` catálogos. En `dbo` solo quedan las
+  tablas internas del framework de Django (`auth_*`, `django_*`) y los diagramas de SSMS. Los modelos declaran
+  `db_table = "[esquema].[tabla]"`; el motor `apps.common.db` (mssql-django con introspección por esquema) permite que las
+  migraciones futuras sigan funcionando sobre esas tablas. El propósito de cada objeto queda en SQL Server como
+  `MS_Description` (catálogo en `apps/system/sqlcatalog.py`).
+* **Datos y modelo ER**: sin los vínculos redundantes debajo de las tarjetas (el filtro de módulo es el desplegable, con
+  tablas y filas por módulo) y una pestaña nueva **«Vistas, SP y triggers»**: estado (activo, deshabilitado o con
+  referencias sin resolver), esquema, tipo, tabla y eventos de cada trigger, propósito, fecha de modificación y, con
+  `VIEW SERVER STATE`, las ejecuciones desde el último reinicio (vista `adm.vw_SystemSqlObject`, `GET /system/data/objects/`).
+* **Periódico virtual** (`/announcements`, pantalla de bienvenida del logotipo): comunicados reales por categoría
+  (noticias, blog, formularios, avisos de RRHH, planillas, cultura, operaciones, **seguridad** y **cambio organizacional**),
+  fijados, audiencia por rol, vigencia y enlace (obligatorio en formularios). **Publicar comunicado** (`announcements.manage`:
+  Administrador y RRHH) con borradores, vista previa, edición y archivo. Los comunicados **críticos** (seguridad y cambios
+  organizacionales) exigen **acuse de recibo**: cada confirmación guarda fecha, IP y la huella SHA-256 del texto, y al
+  publicarse su contenido queda **congelado** (SQL 50122). Los pendientes aparecen en un aviso permanente y en el centro de
+  notificaciones. **Cumplimiento** (`announcements.compliance`): resumen y reporte por usuario (confirmado, fuera de plazo,
+  pendiente, vencido) con CSV y el historial de fotos; **reporte automático** diario y al vencer el plazo con
+  `python manage.py announcements_compliance` (programarlo a diario), además de una foto al archivar. SQL Server: acuses
+  inmutables (50120) y solo sobre comunicados publicados con acuse (50121), sin borrar publicados (50123), fotos inmutables
+  (50124). La maqueta de la Fase 24 se retiró.
+* **Boleta desglosada por día** (portal «Mis boletas» y detalle de planilla): cada fecha de los **cortes internos**
+  (p. ej. 25/09–09/10) con su tipo de día (laborado, parcial, feriado, vacaciones, ausencia, descanso, suspensión…), horas
+  programadas, pagables y nocturnas, y su **traducción exacta a dinero**: salario por horas, vacaciones, nocturnidad,
+  recargo de feriado y séptimo día, repartidos al centavo desde las líneas de la boleta (la suma de los días cuadra con
+  ellas); además, otros devengos (AP) y retenciones. Se guarda en `fin.pay_payroll_day` al calcular (bloqueada al cerrar la
+  planilla, 50099) y se congela en el contenido de la boleta final. **Recalcule las planillas abiertas** para generar su
+  desglose diario.
+
+## Login, datos de prueba, limpieza técnica y ayudas en tooltip (Fase 26)
+* **Login rediseñado** (referencia `login-page-example-saleskip.png`): panel de marca con degradado de la paleta
+  corporativa (respeta la paleta global / personal y el modo noche), saludo, propuesta de valor y el formulario a la
+  derecha con campos de línea inferior, mostrar / ocultar contraseña y aviso de Bloq Mayús. En móvil el panel se reduce a
+  una franja superior. El cambio obligatorio de contraseña usa el mismo marco (`auth/AuthShell.jsx`).
+* **Datos de prueba**: `python manage.py demo_data` (desde `backend/`) genera con los mismos servicios de la interfaz
+  (validaciones, AP, triggers y auditoría):
+  * 3 clientes, 5 marcas, 3 líneas de negocio y 7 sub-líneas (sincronizados con el roster);
+  * 28 colaboradores con expediente completo (datos personales, ISSS / AFP / NIT, banco, contacto de emergencia,
+    documentos obligatorios con imagen de muestra «sin validez legal» y fotografía), Primera AP de horario aprobada y
+    roster (cliente, marca, línea, sub-línea, Team Manager, puesto, tipo de contrato);
+  * cadena de mando Operations Director → Operations Manager → 2 Account Supervisors → 4 Team Managers → 16 agentes
+    (Tier 1 y Tier 2) en el grupo ACD general;
+  * segmentos de la grilla (breaks, almuerzo, reunión de equipo, coaching y capacitación) del corte **10–24 de
+    noviembre de 2026** y la asistencia ACD de los días ya transcurridos;
+  * 8 comunicados del periódico virtual (seguridad y cambio organizacional con acuse obligatorio).
+
+  Escribe `accesos_prueba.txt` en la raíz con usuario y contraseña de un representante por rol (RRHH, WFM, Director,
+  Manager, Account Supervisor, Team Manager, Agente Tier 1 y Tier 2) y la lista completa de cuentas. **No se crea ningún
+  Administrador de prueba.** El archivo está en `.gitignore`. Es idempotente: lo existente se reutiliza y cada ejecución
+  asigna contraseñas nuevas. `--dry-run` valida todo y revierte; `--output RUTA` cambia la ubicación del archivo.
+  Lo generado se identifica por el dominio de correo `@demo.metamorph.test` y los usuarios `demo.*`.
+* **Sin metadatos técnicos para el usuario final**: las páginas ya no muestran vistas, tablas, SP, triggers ni comandos
+  de consola; los mensajes de error dicen «El sistema rechazó…» (sin nombres de restricciones ni el texto del motor, que
+  queda en el log del servidor). `GET /health/db` solo devuelve base, versión, tablas faltantes y detalle del error al
+  Administrador. Los detalles siguen disponibles en Sistema › Datos y modelo ER y en `/admin/`.
+* **Ayudas de campo en tooltip** (`components/ui/FieldHint.jsx`): los textos largos bajo las cajas de texto pasan a un
+  ícono «i» en la esquina del rótulo; la explicación aparece al pasar el cursor sobre el campo o al enfocarlo, encima del
+  rótulo (no tapa lo que se escribe). Los formularios en cuadrícula quedan simétricos; los errores de validación siguen
+  visibles bajo el campo.
+
+## Boletas por corte, roster jerárquico, autocompletado y grilla IEX diferida (Fase 27)
+
+**Boletas por corte (portal › Mis boletas).** Nueva sección «Historial por corte de asistencia»: cada corte interno en el
+que el colaborador estuvo activo (ventana del corte ∩ [ingreso, baja u hoy]) es una sub-sección desplegable con su
+desglose diario, del más reciente al más antiguo. Estado por corte: *Pagado (boleta final)*, *Preliminar* (boleta
+publicada antes del cierre) o *Pendiente de cálculo*. Filtro por año, 3/6/12/24 cortes por página y paginación servida
+por el backend (`GET /api/v1/payroll/me/cutoffs/?year=&page=&page_size=`). Las boletas finales también se filtran por año
+y se paginan (`/payroll/me/payslips/?year=&page=`, bloque `final_page`), y el desglose diario de una boleta que cubre
+varios cortes se navega corte por corte («Ver los N cortes» los muestra todos).
+
+**Datos de prueba con jerarquía real.** `python manage.py demo_data` ahora además:
+* completa el roster de cada agente con la wave de capacitación y las fechas de capacitación, nesting y salida a
+  producción, y el tipo de documento de reportes (DUI) para todos;
+* registra General IDs: *Payroll Tool ID* (`PT######`) para los 28 colaboradores y *ACD ID* por cuenta (cliente y marca;
+  `NV`/`AU`/`VX` + número) para los 16 agentes;
+* verifica que cada agente quede bajo SU Team Manager con la cadena completa (Team Manager → Account Supervisor →
+  Operations Manager → Director); si no, aborta y revierte.
+
+**Autocompletado de colaboradores.** Componente `EmployeeAutocomplete` (typeahead con teclado: flechas, Enter, Esc) que
+busca por nombre, apellidos, ID corporativo o documento sin distinguir acentos
+(`GET /api/v1/hcm/employee-lookup/?q=&scope=acd`). Reemplaza los campos donde se digitaba el ID a mano: Planificación WFM
+(vista del agente), Adherencia, Reporte de estados ACD, Grupos ACD (asignar agente), Justificaciones y Cadena de mando
+(registrar líder). Las AP siguen con su selector jerárquico de la Fase 23.
+
+**Grilla IEX con carga diferida.** La grilla de grupo ya no se consulta al entrar: muestra un estado inicial con acceso
+rápido por Management Unit y solo dispara la consulta cuando hay al menos un filtro (Management Unit, cliente/marca,
+cadena de mando o búsqueda). El backend rechaza la consulta sin filtros (`filters_required`), resuelve los filtros como
+subconsultas en SQL Server (sin listas de ids, apto para plantillas de miles de agentes) y devuelve los agentes por
+páginas de 25/50/100/200 (`page`, `page_size`; bloque `paging`): solo la página pedida se evalúa contra el ACD.
 
 ## Fuera de alcance (por ahora)
 * JWT / SSO (la API usa sesión + CSRF; el SPA no maneja tokens).

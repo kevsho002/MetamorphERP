@@ -5,6 +5,7 @@ import { rosterApi } from "../api.js";
 import { useRosterConfig } from "../hooks/useRosterConfig.js";
 import ChainOfCommandPanel from "./ChainOfCommandPanel.jsx";
 import RosterField from "./RosterField.jsx";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 const NOW = <span className="badge badge--ok">Now</span>;
 
@@ -310,7 +311,7 @@ function RosterEditor({ employee, config, onCancel, onSaved }) {
           {fieldErrors.effective_date ? (
             <small className="field__error">{fieldErrors.effective_date}</small>
           ) : (
-            <small className="field__hint">Los cambios rigen desde esta fecha; puede ser pasada (corrección) o futura.</small>
+            <FieldHint>Los cambios rigen desde esta fecha; puede ser pasada (corrección) o futura.</FieldHint>
           )}
         </div>
         <div className="field">
@@ -324,7 +325,7 @@ function RosterEditor({ employee, config, onCancel, onSaved }) {
             placeholder="p. ej. Reasignación a nueva campaña"
             onChange={(e) => setReason(e.target.value)}
           />
-          <small className="field__hint">Queda en el historial y la auditoría.</small>
+          <FieldHint>Queda en el historial y la auditoría.</FieldHint>
         </div>
       </div>
       {loadError && <p className="error-box">{loadError}</p>}

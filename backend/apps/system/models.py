@@ -11,8 +11,9 @@ from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
-from django.utils import timezone
+from django.utils import timezone
 
+from apps.common.fields import sql_table
 
 BRAND_PALETTES = [
     ("NAVY", "Azul corporativo"), ("TEAL", "Verde azulado"), ("WINE", "Vino"), ("GRAPHITE", "Grafito"),
@@ -81,6 +82,20 @@ class PlatformSettings(models.Model):
     )
 
     # ------------------------------------------------- Fase 22: apariencia corporativa
+    max_attachment_mb = models.PositiveSmallIntegerField(
+        "tamaño máximo de adjuntos de AP (MB)",
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(25)],
+        help_text="Fase 24: evidencias de las acciones de personal (imágenes PNG/JPG, PDF y documentos de Office).",
+    )
+    # ------------------------------------------------- Fase 25: bloqueo de cuentas
+    max_failed_logins = models.PositiveSmallIntegerField(
+        "intentos fallidos antes de bloquear",
+        default=5,
+        validators=[MaxValueValidator(20)],
+        help_text="Fase 25: la cuenta se bloquea tras N contraseñas incorrectas consecutivas (0 = no bloquear). "
+                  "Se desbloquea en Usuarios del panel de administración.",
+    )
     brand_palette = models.CharField(
         "paleta corporativa", max_length=12, choices=BRAND_PALETTES, default="NAVY",
         help_text="Colores de la barra superior, botones y enlaces para todos los usuarios.",
@@ -102,7 +117,7 @@ class PlatformSettings(models.Model):
     updated_by = models.CharField("actualizado por", max_length=150, blank=True, editable=False)
 
     class Meta:
-        db_table = "sys_platform_settings"
+        db_table = sql_table("adm", "sys_platform_settings")
         verbose_name = "parámetros de sesión y cliente web"
         verbose_name_plural = "parámetros de sesión y cliente web"
         constraints = [models.CheckConstraint(condition=models.Q(id=1), name="ck_platform_settings_singleton")]
@@ -143,7 +158,7 @@ class UserSession(models.Model):
     end_reason = models.CharField("motivo de cierre", max_length=12, choices=EndReason, blank=True)
 
     class Meta:
-        db_table = "sys_user_session"
+        db_table = sql_table("sec", "sys_user_session")
         ordering = ["-started_at"]
         verbose_name = "sesión de usuario"
         verbose_name_plural = "sesiones de usuario"
@@ -175,6 +190,7 @@ class AuditEvent(models.Model):
         WFM = "WFM", "Segmentos y adherencia (WFM)"
         SYSTEM = "SYSTEM", "Parámetros del sistema"
         PAYROLL = "PAYROLL", "Planillas y boletas de pago"
+        COMMS = "COMMS", "Comunicados corporativos"
 
     occurred_at = models.DateTimeField("fecha y hora", default=timezone.now, db_index=True)
     category = models.CharField("categoría", max_length=10, choices=Category)
@@ -197,7 +213,7 @@ class AuditEvent(models.Model):
     user_agent = models.CharField("navegador", max_length=300, blank=True)
 
     class Meta:
-        db_table = "sys_audit_event"
+        db_table = sql_table("adm", "sys_audit_event")
         ordering = ["-occurred_at", "-id"]
         verbose_name = "evento de auditoría"
         verbose_name_plural = "registro de auditoría"
@@ -218,7 +234,7 @@ class NotificationRead(models.Model):
     read_at = models.DateTimeField("leída", default=timezone.now)
 
     class Meta:
-        db_table = "sys_notification_read"
+        db_table = sql_table("adm", "sys_notification_read")
         verbose_name = "notificación leída"
         verbose_name_plural = "notificaciones leídas"
         constraints = [models.UniqueConstraint(fields=["user", "key"], name="uq_sys_notification_read")]
@@ -257,7 +273,7 @@ class UserPreference(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "sys_user_preference"
+        db_table = sql_table("adm", "sys_user_preference")
         verbose_name = "preferencia visual del usuario"
         verbose_name_plural = "preferencias visuales de los usuarios"
         constraints = [

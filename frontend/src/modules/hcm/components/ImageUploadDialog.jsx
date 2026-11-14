@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useClientConfig } from "../../../app/ClientConfigContext.jsx";
 import { employeesApi } from "../api.js";
 import { todayIso } from "../lib/format.js";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 const EXTENSIONS = [".png", ".jpg", ".jpeg"];
 const MIME = ["image/png", "image/jpeg"];
@@ -154,7 +155,7 @@ export default function ImageUploadDialog({ mode, employeeCode, documents = [], 
               {errors.document_type ? (
                 <small className="field__error">{errors.document_type}</small>
               ) : (
-                selected?.help && <small className="field__hint">{selected.help}</small>
+                selected?.help && <FieldHint>{selected.help}</FieldHint>
               )}
             </div>
             <div className="field">
@@ -187,7 +188,7 @@ export default function ImageUploadDialog({ mode, employeeCode, documents = [], 
               {errors.expiry_date ? (
                 <small className="field__error">{errors.expiry_date}</small>
               ) : (
-                <small className="field__hint">{selected?.requires_expiry ? "Obligatoria para este documento." : "Opcional."}</small>
+                <FieldHint>{selected?.requires_expiry ? "Obligatoria para este documento." : "Opcional."}</FieldHint>
               )}
             </div>
           </div>

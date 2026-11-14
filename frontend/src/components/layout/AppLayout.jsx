@@ -7,6 +7,7 @@ import { AppLogo } from "../ui/Brand.jsx";
 import AnnouncementBar from "./AnnouncementBar.jsx";
 import SessionWatcher from "./SessionWatcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
+import PendingAckBanner from "./PendingAckBanner.jsx";
 import Sidebar, { useSidebarPin } from "./Sidebar.jsx";
 import UserPresenceMenu from "./UserPresenceMenu.jsx";
 
@@ -46,7 +47,7 @@ export default function AppLayout({ modules }) {
           >
             ☰
           </button>
-          <Link to="/" className="topbar__brand" aria-label="Metamorph ERP — inicio">
+          <Link to="/announcements" className="topbar__brand" aria-label="Metamorph ERP — periódico virtual" title="Periódico virtual">
             <AppLogo />
           </Link>
           <NotificationBell />
@@ -57,6 +58,7 @@ export default function AppLayout({ modules }) {
 
         <main className="content">
           <AnnouncementBar />
+          <PendingAckBanner />
           <Outlet />
         </main>
         <SessionWatcher />

@@ -85,7 +85,7 @@ def test_sql_whole_seconds_and_views_count_seconds(api, agent):
     assert r.status_code == 201, r.json()
     seg_id = r.json()["segment"]["id"]
     with connection.cursor() as c:
-        c.execute("SELECT DurationSeconds, Minutes FROM dbo.vw_AdhScheduleSegment WHERE SegmentId = %s", [seg_id])
+        c.execute("SELECT DurationSeconds, Minutes FROM wfm.vw_AdhScheduleSegment WHERE SegmentId = %s", [seg_id])
         seconds, minutes = c.fetchone()
     assert seconds == 320 and float(minutes) == pytest.approx(5.3333, abs=1e-4)  # DATEDIFF(MINUTE) daba 6
     # SQL Server guarda segundos enteros: una fracción se rechaza.

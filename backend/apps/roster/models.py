@@ -23,8 +23,9 @@ import uuid
 
 from django.core.validators import RegexValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.common.models import Country
 from apps.hcm.models import Employee
 
@@ -53,7 +54,7 @@ class RosterDimension(models.Model):
     is_active = models.BooleanField("activa", default=True)
 
     class Meta:
-        db_table = "roster_dimension"
+        db_table = sql_table("org", "roster_dimension")
         ordering = ["name"]
         verbose_name = "dimensión del roster"
         verbose_name_plural = "dimensiones del roster"
@@ -87,7 +88,7 @@ class RosterDimensionItem(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "roster_dimension_item"
+        db_table = sql_table("org", "roster_dimension_item")
         ordering = ["dimension__name", "name"]
         verbose_name = "elemento de dimensión"
         verbose_name_plural = "elementos de dimensiones (clientes, marcas, líneas...)"
@@ -153,7 +154,7 @@ class RosterAttribute(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "roster_attribute"
+        db_table = sql_table("org", "roster_attribute")
         ordering = ["display_order", "name"]
         verbose_name = "atributo del roster"
         verbose_name_plural = "atributos del roster"
@@ -242,7 +243,7 @@ class RosterAssignment(models.Model):
     objects = RosterAssignmentQuerySet.as_manager()
 
     class Meta:
-        db_table = "roster_assignment"
+        db_table = sql_table("org", "roster_assignment")
         ordering = ["employee_id", "attribute_id", "effective_start"]
         verbose_name = "asignación de roster"
         verbose_name_plural = "asignaciones de roster"

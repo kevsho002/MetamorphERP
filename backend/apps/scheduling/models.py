@@ -29,8 +29,9 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.common.models import Country
 from apps.hcm.models import Employee
 from apps.scheduling import engine
@@ -87,7 +88,7 @@ class ScheduleAssignment(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "sch_schedule_assignment"
+        db_table = sql_table("wfm", "sch_schedule_assignment")
         ordering = ["employee_id", "-effective_start_date"]
         verbose_name = "horario vigente"
         verbose_name_plural = "horarios vigentes (por AP)"
@@ -138,7 +139,7 @@ class NightRule(models.Model):
     updated_at = models.DateTimeField("actualizada", auto_now=True)
 
     class Meta:
-        db_table = "sch_night_rule"
+        db_table = sql_table("wfm", "sch_night_rule")
         ordering = ["country_id", "-effective_start_date"]
         verbose_name = "regla de nocturnidad"
         verbose_name_plural = "reglas de nocturnidad"
@@ -209,7 +210,7 @@ class LunchRule(models.Model):
     updated_at = models.DateTimeField("actualizada", auto_now=True)
 
     class Meta:
-        db_table = "sch_lunch_rule"
+        db_table = sql_table("wfm", "sch_lunch_rule")
         ordering = ["country_id", "min_block_minutes", "-effective_start_date"]
         verbose_name = "regla de almuerzo"
         verbose_name_plural = "reglas de almuerzo (horas mínimas por país)"
@@ -303,7 +304,7 @@ class PayCycle(models.Model):
     updated_at = models.DateTimeField("actualizado", auto_now=True)
 
     class Meta:
-        db_table = "sch_pay_cycle"
+        db_table = sql_table("wfm", "sch_pay_cycle")
         ordering = ["country_id", "code"]
         verbose_name = "ciclo de pago"
         verbose_name_plural = "ciclos de pago"
@@ -420,7 +421,7 @@ class PayPeriod(models.Model):
     created_at = models.DateTimeField("creado", auto_now_add=True)
 
     class Meta:
-        db_table = "sch_pay_period"
+        db_table = sql_table("wfm", "sch_pay_period")
         ordering = ["cycle_id", "period_start"]
         verbose_name = "periodo de pago"
         verbose_name_plural = "periodos de pago"
@@ -503,7 +504,7 @@ class AttendanceCutoff(models.Model):
     created_at = models.DateTimeField("creado", auto_now_add=True)
 
     class Meta:
-        db_table = "sch_attendance_cutoff"
+        db_table = sql_table("wfm", "sch_attendance_cutoff")
         ordering = ["cycle_id", "cutoff_start"]
         verbose_name = "corte interno de asistencia"
         verbose_name_plural = "cortes internos de asistencia"
@@ -601,7 +602,7 @@ class TimeRecord(models.Model):
     created_at = models.DateTimeField("registrado", auto_now_add=True)
 
     class Meta:
-        db_table = "sch_time_record"
+        db_table = sql_table("wfm", "sch_time_record")
         ordering = ["employee_id", "occurrence_date", "start_at"]
         verbose_name = "registro de tiempo"
         verbose_name_plural = "registros de tiempo"
@@ -643,7 +644,7 @@ class TimeRecordDay(models.Model):
     shift_date = models.DateField("fecha del turno", null=True, blank=True)
 
     class Meta:
-        db_table = "sch_time_record_day"
+        db_table = sql_table("wfm", "sch_time_record_day")
         ordering = ["occurrence_date", "start_at"]
         verbose_name = "tiempo por fecha de ocurrencia"
         verbose_name_plural = "tiempo por fecha de ocurrencia"

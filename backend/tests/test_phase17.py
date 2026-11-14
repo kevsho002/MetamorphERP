@@ -190,7 +190,7 @@ def test_grid_settings(api, hr_user, org):
     assert GridSetting.objects.get(group__code="GENERAL").interval_minutes == 30
     grid = api.get(f"{H}/grid/", {"date": "2026-10-05", "group": "GENERAL"}).json()["grid"]
     assert (grid["interval_minutes"], grid["snap_seconds"], grid["window_start"]) == (30, 900, 6 * 60)
-    assert api.get(f"{H}/grid/", {"date": "2026-10-05"}).json()["grid"]["interval_minutes"] == 15  # global
+    assert api.get(f"{H}/grid/", {"date": "2026-10-05", "client": "ACME"}).json()["grid"]["interval_minutes"] == 15  # global
     r = api.put(f"{H}/grid/settings/", {"interval_minutes": 15, "snap_seconds": 1800}, format="json")
     assert r.status_code == 400 and "snap_seconds" in r.json()["errors"]
     api.force_login(hr_user)

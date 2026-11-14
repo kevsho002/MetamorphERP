@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { employeesApi } from "../api.js";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 /**
  * Buscador de cuentas Metamorph EXISTENTES sin empleado vinculado (Fase 7).
@@ -67,7 +68,7 @@ export default function AccountSearch({ value, onChange, error, disabled, id = "
           {error}
         </small>
       ) : (
-        <small className="field__hint">Solo cuentas sin empleado vinculado y con un rol que usted puede administrar.</small>
+        <FieldHint>Solo cuentas sin empleado vinculado y con un rol que usted puede administrar.</FieldHint>
       )}
       {state.error && <p className="field__error">No se pudo buscar: {state.error}</p>}
       <ul className="account-search__results" aria-busy={state.loading}>

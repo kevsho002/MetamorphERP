@@ -1,0 +1,336 @@
+/* ==========================================================================
+   Fase 24 — Anuncios corporativos (destino del logotipo), adjuntos de las AP
+   y pestañas del detalle de la AP (evidencias y bitácora de auditoría).
+   ========================================================================== */
+
+/* ------------------------------------------------------------ anuncios -- */
+.news__hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.news__logo .brand-logo {
+  height: 40px;
+}
+
+.news__live {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius);
+}
+
+.news__mock {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.news__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.news__search {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
+.news__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.news__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.news__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.news__card--pinned {
+  grid-column: 1 / -1;
+  border-left: 4px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+}
+
+.news__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.news__title {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.news__body {
+  margin: 0;
+  flex: 1;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.news__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+/* -------------------------------------------------------- adjuntos AP -- */
+.attach-fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+.attach-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius);
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.attach-drop.is-over {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.attach-drop.is-disabled {
+  opacity: 0.6;
+}
+
+.attach-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.attach-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(140px, 190px) minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.attach-item__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.attach-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.attach-kind {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--color-muted);
+}
+
+.attach-kind--image {
+  background: #2f7dd1;
+}
+
+.attach-kind--pdf {
+  background: #b42318;
+}
+
+.attach-kind--document {
+  background: #1d6b3b;
+}
+
+.attach-kind--lg {
+  width: 56px;
+  height: 56px;
+  font-size: 0.85rem;
+}
+
+.attach-upload {
+  margin-bottom: var(--space-3);
+}
+
+.attach-grid {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+
+.attach-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.attach-card.is-removed {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.attach-card.is-removed .attach-item__name {
+  text-decoration: line-through;
+}
+
+.attach-card__thumb {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.attach-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attach-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attach-card__body p {
+  margin: 0;
+}
+
+.attach-card__meta,
+.attach-card__actions,
+.attach-card__remove {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+
+.attach-card__remove input {
+  flex: 1 1 140px;
+}
+
+/* ---------------------------------------------- pestañas / auditoría AP -- */
+.ap-tabpanel {
+  padding-top: var(--space-2);
+}
+
+.ap-timeline {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  border-left: 2px solid var(--color-border);
+}
+
+.ap-timeline__item {
+  position: relative;
+  padding: 0 0 var(--space-3) var(--space-3);
+}
+
+.ap-timeline__item p {
+  margin: 2px 0 0;
+}
+
+.ap-timeline__dot {
+  position: absolute;
+  left: -7px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-surface);
+}
+
+.ap-timeline__item.is-failed .ap-timeline__dot {
+  background: var(--color-danger);
+}
+
+@media (max-width: 640px) {
+  .news__hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .news__search {
+    max-width: none;
+  }
+
+  .attach-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .attach-item select,
+  .attach-item input {
+    grid-column: 1 / -1;
+  }
+
+  .attach-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attach-card {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .attach-card__thumb {
+    width: 64px;
+    height: 64px;
+  }
+}

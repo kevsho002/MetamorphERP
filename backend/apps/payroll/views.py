@@ -39,10 +39,10 @@ from apps.scheduling.models import PayPeriod
 PERMISSIONS = [IsAuthenticated, PasswordChangeNotRequired, HasActionPermission]
 NO_STORE = {"Cache-Control": "no-store"}
 SQL_ERRORS = (
-    ("50090", "SQL Server rechazó el cambio: la planilla está cerrada o pagada."),
-    ("50091", "SQL Server rechazó el cambio: el estado de la planilla solo avanza y una planilla cerrada no cambia sus totales."),
-    ("50092", "SQL Server rechazó el cambio: el contenido de una boleta generada no cambia ni se elimina."),
-    ("50093", "SQL Server rechazó la línea: la AP debe estar aprobada, ser del mismo empleado y ser un concepto de planilla."),
+    ("50090", "El sistema rechazó el cambio: la planilla está cerrada o pagada."),
+    ("50091", "El sistema rechazó el cambio: el estado de la planilla solo avanza y una planilla cerrada no cambia sus totales."),
+    ("50092", "El sistema rechazó el cambio: el contenido de una boleta generada no cambia ni se elimina."),
+    ("50093", "El sistema rechazó la línea: la AP debe estar aprobada, ser del mismo empleado y ser un concepto de planilla."),
     ("ck_pay_slip_sign_printed", "Una boleta solo se marca como firmada si ya está impresa."),
     ("ck_pay_slip_archive_printed", "Una boleta solo se archiva si ya está impresa."),
     ("uq_pay_line_action_code", "La AP ya se pagó en otra planilla."),
@@ -384,8 +384,8 @@ class _Fase21View(_View):
             return Response({"detail": exc.message, "code": exc.code}, status=exc.status)
         if isinstance(exc, DatabaseError):
             text = str(exc)
-            for number, message in (("50095", "SQL Server rechazó el cambio: la liquidación aprobada o pagada no cambia."),
-                                    ("50096", "SQL Server rechazó el cambio: regla del lote de pago de liquidaciones."),
+            for number, message in (("50095", "El sistema rechazó el cambio: la liquidación aprobada o pagada no cambia."),
+                                    ("50096", "El sistema rechazó el cambio: regla del lote de pago de liquidaciones."),
                                     ("uq_pay_settlement_check", "Ese número de cheque ya está en el lote.")):
                 if number in text:
                     return Response({"detail": message, "code": f"sql_{number}"}, status=status.HTTP_409_CONFLICT)
@@ -407,7 +407,20 @@ class MyPayslipsView(_View):
     method_permissions = {"get": Perm.SELF_SERVICE}
 
     def get(self, request):
-        return Response(portal.my_payslips(request.user), headers=NO_STORE)
+        p = request.query_params
+        return Response(portal.my_payslips(request.user, year=p.get("year"), page=p.get("page") or 1,
+                                           page_size=p.get("page_size") or 6), headers=NO_STORE)
+
+
+class MyCutoffsView(_View):
+    """Fase 27 — Portal: historial de la boleta por corte interno de asistencia (paginado, filtro por año)."""
+
+    method_permissions = {"get": Perm.SELF_SERVICE}
+
+    def get(self, request):
+        p = request.query_params
+        return Response(portal.my_cutoffs(request.user, year=p.get("year"), page=p.get("page") or 1,
+                                          page_size=p.get("page_size") or 6), headers=NO_STORE)
 
 
 class MyPayslipPdfView(_View):

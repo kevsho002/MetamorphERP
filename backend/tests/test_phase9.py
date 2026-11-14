@@ -205,9 +205,9 @@ def test_reporting_views(api, hr_user):
     api.force_login(hr_user)
     emp = hire(api)
     with connection.cursor() as cursor:
-        for view in ("vw_PersonnelAction", "vw_SchScheduleAssignment", "vw_SchScheduleDay"):
-            cursor.execute(f"SELECT TOP 1 * FROM dbo.{view}")
-        cursor.execute("SELECT DayKey, DayMinutes, NightMinutes FROM dbo.vw_SchScheduleDay WHERE EmployeeCode = %s AND DayKey = 'mon'", [emp.employee_code])
+        for view in ("pa.vw_PersonnelAction", "wfm.vw_SchScheduleAssignment", "wfm.vw_SchScheduleDay"):
+            cursor.execute(f"SELECT TOP 1 * FROM {view}")
+        cursor.execute("SELECT DayKey, DayMinutes, NightMinutes FROM wfm.vw_SchScheduleDay WHERE EmployeeCode = %s AND DayKey = 'mon'", [emp.employee_code])
         assert tuple(cursor.fetchone()) == ("mon", 480, 0)
 
 

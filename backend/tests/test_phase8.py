@@ -218,4 +218,4 @@ def test_permissions_and_reporting_views(api, employee_user, wfm_user):
     assert any(r["country"] == "SV" and r["start_time"] == "19:00" for r in body["night_rules"])
     with connection.cursor() as cursor:
         for view in ("vw_SchTimeByOccurrenceDate", "vw_SchScheduleAssignment", "vw_SchPayPeriod", "vw_SchAttendanceCutoff", "vw_SchPayrollHours"):
-            cursor.execute(f"SELECT TOP 1 * FROM dbo.{view}")
+            cursor.execute(f"SELECT TOP 1 * FROM wfm.{view}")

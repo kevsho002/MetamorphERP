@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adhApi, durationText, fmtDuration, parseDuration } from "../api.js";
 import ActivityIcon from "../components/ActivityIcon.jsx";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 const EMPTY = { code: "", name: "", category: "OTHER", color: "#64748b", is_paid: true, is_billable: false, is_default: false, duration: "",
   description: "", is_active: true, sort_order: 100, icon: "clock", clients: [], rules: [{ primary_status: "ON_QUEUE", aux_code: "", role: "PRIMARY" }],
@@ -262,9 +263,11 @@ function ActivityForm({ catalogs, initial, isNew = false, onDone, onError, onCan
           <span className="field__label">Duración sugerida (HH:MM:SS)</span>
           <input value={form.duration} inputMode="numeric" placeholder="00:15:00" aria-invalid={durationError}
             onChange={(e) => set("duration", e.target.value)} />
-          <small className={durationError ? "field__error" : "field__hint"}>
-            {durationError ? "De 00:01:00 a 12:00:00." : seconds ? `= ${fmtDuration(seconds)} (al segundo)` : "Vacío = 30 min al soltarla en la grilla."}
-          </small>
+          {durationError ? (
+            <small className="field__error">De 00:01:00 a 12:00:00.</small>
+          ) : (
+            <FieldHint>{seconds ? `= ${fmtDuration(seconds)} (al segundo)` : "Vacío = 30 min al soltarla en la grilla."}</FieldHint>
+          )}
         </label>
         <label className="field">
           <span className="field__label">Icono (barra de segmentos)</span>

@@ -5,6 +5,7 @@ import { formatDate, formatDateTime, formatMoney } from "../../hcm/lib/format.js
 import { useTimeFormat } from "../../../app/timeFormat.js";
 import { RUN_STATUS, num, payrollApi } from "../api.js";
 import PayslipDocument, { previewContent } from "../components/PayslipDocument.jsx";
+import DailyPayslip from "../components/DailyPayslip.jsx";
 
 /**
  * Planilla de un periodo (Fase 20): totales, advertencias del cálculo y detalle por colaborador. Clic en un colaborador
@@ -416,7 +417,10 @@ function BreakdownModal({ runId, code, onClose }) {
           {state.loading && <p className="muted">Cargando…</p>}
           {state.error && <p className="error-box">{state.error}</p>}
           {data && (
-            <PayslipDocument content={previewContent(data)} preview={!data.payslip} pdfHref={payrollApi.employeePdfUrl(runId, code)} />
+            <>
+              <PayslipDocument content={previewContent(data)} preview={!data.payslip} pdfHref={payrollApi.employeePdfUrl(runId, code)} />
+              <DailyPayslip daily={data.daily} currency={data.run.currency} />
+            </>
           )}
         </div>
       </div>

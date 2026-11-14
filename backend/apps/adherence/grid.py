@@ -145,29 +145,68 @@ def _on(rows: list[RosterAssignment], d: date) -> RosterAssignment | None:
     return next((r for r in rows if r.effective_start <= d and (r.effective_end is None or r.effective_end >= d)), None)
 
 
-def select_grid_employees(params, d: date) -> list[Employee]:
-    """Agentes de la grilla: Management Unit (o todos los agentes ACD activos) ∩ cliente / marca ∩ jerarquía ∩ búsqueda."""
+# Fase 27: la grilla NO se consulta sin al menos uno de estos filtros, y los agentes se cargan por páginas.
+GRID_FILTER_KEYS = ("group", "client", "brand", "director", "manager", "supervisor", "team_manager", "search")
+GRID_PAGE_SIZES = (25, 50, 100, 200)
+GRID_DEFAULT_PAGE_SIZE = 50
+
+
+def has_grid_filter(params) -> bool:
+    return any(str(params.get(k) or "").strip() for k in GRID_FILTER_KEYS)
+
+
+def grid_queryset(params, d: date):
+    """Agentes de la grilla: Management Unit (o todos los agentes ACD activos) ∩ cliente / marca ∩ jerarquía ∩ búsqueda.
+
+    Todo se resuelve con SUBCONSULTAS en la base de datos (nunca listas de ids en Python), de modo que una plantilla de
+    miles de agentes no genera consultas con miles de parámetros. Exige al menos un filtro (Fase 27)."""
+    if not has_grid_filter(params):
+        raise AdhError("Aplique al menos un filtro (Management Unit, cuenta, cadena de mando o búsqueda) antes de cargar la "
+                       "grilla.", "filters_required")
     group = str(params.get("group") or "").strip().upper()
     members = AgentMembership.objects.filter(is_active=True)
     if group:
         members = members.filter(group__code=group)
-    ids = set(members.values_list("employee_id", flat=True))
-    for attr, key in (("client", "client"), ("brand", "brand")):
-        code = str(params.get(key) or "").strip()
-        if code and ids:
-            rows = _roster_items(list(ids), attr, d, d)
-            ids = {eid for eid in ids if (r := _on(rows.get(eid, []), d)) and r.item.code == code}
+    qs = Employee.objects.filter(pk__in=members.values("employee_id"))
+    for attr in ("client", "brand"):
+        code = str(params.get(attr) or "").strip()
+        if code:
+            on_date = (RosterAssignment.objects.current().filter(attribute__code=attr, item__code=code, effective_start__lte=d)
+                       .filter(Q(effective_end__isnull=True) | Q(effective_end__gte=d)))
+            qs = qs.filter(pk__in=on_date.values("employee_id"))
     # El nivel más bajo elegido manda (Team Manager > Account Supervisor > Operations Manager > Director).
     for param in ("team_manager", "supervisor", "manager", "director"):
         code = str(params.get(param) or "").strip()
         if code:
-            ids &= hierarchy.employees_under(hierarchy.FILTER_PARAMS[param], code, d)
+            qs = qs.filter(pk__in=hierarchy.employees_under_qs(hierarchy.FILTER_PARAMS[param], code, d))
             break
-    qs = Employee.objects.filter(pk__in=list(ids))
     search = str(params.get("search") or "").strip()
     if search:
         qs = qs.filter(Q(employee_code__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search))
-    return list(qs.order_by("last_name", "first_name", "employee_code")[:MAX_EMPLOYEES + 1])
+    return qs.order_by("last_name", "first_name", "employee_code")
+
+
+def select_grid_employees(params, d: date) -> list[Employee]:
+    return list(grid_queryset(params, d)[:MAX_EMPLOYEES + 1])
+
+
+def _int(value, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def grid_page(params, d: date) -> tuple[list[Employee], dict]:
+    """Página de agentes de la grilla (carga diferida): solo esa página se evalúa contra el ACD."""
+    qs = grid_queryset(params, d)
+    count = qs.count()
+    size = _int(params.get("page_size"), GRID_DEFAULT_PAGE_SIZE)
+    size = size if size in GRID_PAGE_SIZES else GRID_DEFAULT_PAGE_SIZE
+    pages = max(1, -(-count // size))
+    page = min(max(1, _int(params.get("page"), 1)), pages)
+    return list(qs[(page - 1) * size: page * size]), {"count": count, "page": page, "pages": pages, "page_size": size,
+                                                     "page_sizes": list(GRID_PAGE_SIZES)}
 
 
 # ============================================================================ grilla multi-agente

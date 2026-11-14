@@ -8,10 +8,11 @@ Enlace con el dominio HCM:
 - `role`      -> rol RBAC único (ver apps/accounts/roles.py).
 """
 
-from django.contrib.auth.models import AbstractUser, UserManager
+from django.contrib.auth.models import AbstractUser, Group, Permission, UserManager
 from django.db import models
 
 from apps.accounts.roles import Role
+from apps.common.fields import sql_table
 from apps.common.models import CostCenter
 from apps.hcm.models import Employee
 
@@ -51,11 +52,31 @@ class CustomUser(AbstractUser):
         help_text="Se activa tras un reseteo administrativo; bloquea la API hasta que el usuario la cambie.",
     )
     password_changed_at = models.DateTimeField("último cambio de contraseña", null=True, blank=True)
+    # Fase 25: bloqueo de la cuenta (intentos fallidos o decisión administrativa). Una cuenta bloqueada NO supera la
+    # autenticación (apps.accounts.backends) aunque la contraseña sea correcta; se desbloquea desde /admin/.
+    failed_login_count = models.PositiveSmallIntegerField("intentos fallidos consecutivos", default=0)
+    last_failed_login_at = models.DateTimeField("último intento fallido", null=True, blank=True)
+    locked_at = models.DateTimeField("bloqueada desde", null=True, blank=True, db_index=True)
+    lock_reason = models.CharField("motivo del bloqueo", max_length=200, blank=True)
     updated_at = models.DateTimeField("actualizado", auto_now=True)
+
+    # Fase 25: la cuenta vive en el esquema de seguridad (sec); las tablas M2M heredadas de PermissionsMixin se nombran
+    # explícitamente para que también queden en sec (Django las derivaría de db_table).
+    groups = models.ManyToManyField(
+        Group, verbose_name="groups", blank=True, related_name="user_set", related_query_name="user",
+        db_table=sql_table("sec", "accounts_customuser_groups"),
+        help_text="The groups this user belongs to. A user will get all permissions granted to each of their groups.",
+    )
+    user_permissions = models.ManyToManyField(
+        Permission, verbose_name="user permissions", blank=True, related_name="user_set", related_query_name="user",
+        db_table=sql_table("sec", "accounts_customuser_user_permissions"),
+        help_text="Specific permissions for this user.",
+    )
 
     objects = CustomUserManager()
 
     class Meta:
+        db_table = sql_table("sec", "accounts_customuser")
         verbose_name = "usuario"
         verbose_name_plural = "usuarios"
         ordering = ["username"]
@@ -64,7 +85,15 @@ class CustomUser(AbstractUser):
                 condition=models.Q(role__in=Role.values),
                 name="ck_customuser_role",
             ),
+            models.CheckConstraint(
+                condition=models.Q(locked_at__isnull=True) | ~models.Q(lock_reason=""),
+                name="ck_customuser_lock_reason",
+            ),
         ]
+
+    @property
+    def is_locked(self) -> bool:
+        return self.locked_at is not None
 
     @property
     def employee_code(self) -> str | None:

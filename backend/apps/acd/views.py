@@ -56,9 +56,9 @@ class _View(APIView):
         if isinstance(exc, DatabaseError):
             text = str(exc)
             for number, message in (
-                ("50060", "SQL Server rechazó el estado: se traslapa con otro segmento del agente."),
-                ("50061", "SQL Server rechazó el estado: el auxiliar no pertenece a ese estado primario."),
-                ("50062", "SQL Server rechazó el auxiliar: un sub-auxiliar tiene un solo nivel y el estado de su padre."),
+                ("50060", "El sistema rechazó el estado: se traslapa con otro segmento del agente."),
+                ("50061", "El sistema rechazó el estado: el auxiliar no pertenece a ese estado primario."),
+                ("50062", "El sistema rechazó el auxiliar: un sub-auxiliar tiene un solo nivel y el estado de su padre."),
                 ("uq_acd_segment_open", "El agente ya tiene un estado abierto (cambio simultáneo): vuelva a intentarlo."),
                 ("uq_acd_session_open", "El agente ya tiene una sesión abierta (inicio simultáneo)."),
             ):

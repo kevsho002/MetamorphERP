@@ -190,6 +190,12 @@ def employees_under(level: str, employee_code: str, on: date) -> set[int]:
     return set(_assignment_qs(on, on).filter(item_id__in=items).values_list("employee_id", flat=True))
 
 
+def employees_under_qs(level: str, employee_code: str, on: date):
+    """Como `employees_under`, pero como subconsulta (valores employee_id) para filtrar plantillas grandes en SQL."""
+    items = subtree_items(level, employee_code)
+    return _assignment_qs(on, on).filter(item_id__in=items or [0]).values("employee_id")
+
+
 def chain_of_command(employee: Employee, on: date) -> dict:
     """Para la ficha del roster: su cadena vigente como agente (vía Team Manager) y sus roles de líder."""
     as_agent = agent_hierarchy([employee.pk], on).get(employee.pk)

@@ -179,7 +179,7 @@ def save_holiday(data: dict, *, holiday: Holiday | None = None, user=None, reque
 
 
 def copy_year(country_code: str, from_year: int, to_year: int, *, user=None, request=None) -> list[dict]:
-    """Fase 23: copia los feriados de un año a otro (dbo.usp_HolidayCopyYear; Semana Santa con la Pascua del destino)."""
+    """Fase 23: copia los feriados de un año a otro (wfm.usp_HolidayCopyYear; Semana Santa con la Pascua del destino)."""
     from django.db import connection
 
     from apps.common.models import Country
@@ -190,7 +190,7 @@ def copy_year(country_code: str, from_year: int, to_year: int, *, user=None, req
     if not (2000 <= from_year <= 2100 and 2000 <= to_year <= 2100) or from_year == to_year:
         raise HolidayError("Años inválidos (el destino debe ser distinto del origen).", "invalid")
     with connection.cursor() as c:
-        c.execute("EXEC dbo.usp_HolidayCopyYear @CountryId = %s, @FromYear = %s, @ToYear = %s, @UserId = %s",
+        c.execute("EXEC wfm.usp_HolidayCopyYear @CountryId = %s, @FromYear = %s, @ToYear = %s, @UserId = %s",
                   [country.pk, from_year, to_year, getattr(user, "pk", None)])
         rows = [{"id": r[0], "date": r[1], "name": r[2]} for r in c.fetchall()] if c.description else []
     record("holiday_year_copied", Category.PAYROLL,

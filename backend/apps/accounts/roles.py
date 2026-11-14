@@ -40,6 +40,8 @@ class Perm:
     ACD_AGENT = "acd.agent"  # Fase 11: consola del agente (iniciar sesión, On Queue, auxiliares de su grupo)
     ACD_VIEW = "acd.view"  # tablero de agentes y reporte de estados (formato Genesys Cloud)
     ACD_MANAGE = "acd.manage"  # grupos, acceso a auxiliares, agentes por grupo, cierre de sesión forzado
+    ANNOUNCEMENTS_MANAGE = "announcements.manage"  # Fase 25: publicar y gestionar comunicados corporativos
+    ANNOUNCEMENTS_COMPLIANCE = "announcements.compliance"  # reportes de cumplimiento del acuse de recibo
     SELF_SERVICE = "self.view"
     SYSTEM_STATUS = "system.status"
 
@@ -76,6 +78,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             Perm.ACD_MANAGE,
             Perm.SELF_SERVICE,
             Perm.SYSTEM_STATUS,
+            Perm.ANNOUNCEMENTS_MANAGE,
+            Perm.ANNOUNCEMENTS_COMPLIANCE,
         }
     ),
     Role.HR: frozenset(
@@ -84,7 +88,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             Perm.HCM_VIEW, Perm.HCM_MANAGE, Perm.WFM_VIEW, Perm.PAYROLL_VIEW, Perm.PAYROLL_MANAGE,
             Perm.ROSTER_VIEW, Perm.ROSTER_MANAGE, Perm.GENERAL_IDS_VIEW, Perm.GENERAL_IDS_MANAGE,
             Perm.SCHEDULES_VIEW, Perm.SCHEDULES_MANAGE, Perm.ACTIONS_VIEW, Perm.ACTIONS_CREATE, Perm.SELF_SERVICE,
-            Perm.ACD_AGENT, Perm.ACD_VIEW,
+            Perm.ACD_AGENT, Perm.ACD_VIEW, Perm.ANNOUNCEMENTS_MANAGE, Perm.ANNOUNCEMENTS_COMPLIANCE,
         }
     ),
     Role.WFM: frozenset({

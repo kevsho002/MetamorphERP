@@ -9,7 +9,17 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.roles import Perm, permissions_for
 from apps.common.fields import split_sql_table
+
+
+def can_see_internals(request) -> bool:
+    """Fase 26: nombre de la base, versión del motor, tablas faltantes y detalle del error solo para el diagnóstico
+    del Administrador (permiso system.status). El público solo recibe el estado y los conteos."""
+    user = getattr(request, "user", None)
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return Perm.SYSTEM_STATUS in permissions_for(getattr(user, "effective_role", None) or user.role)
 
 
 def expected_tables() -> list[str]:
@@ -36,10 +46,10 @@ class LivenessView(APIView):
 class DatabaseHealthView(APIView):
     """Abre conexión, consulta SQL Server y verifica que existan todas las tablas del modelo.
 
-    Responde 503 si la BD no es accesible ("error") o falta alguna tabla ("degraded").
+    Responde 503 si la BD no es accesible ("error") o falta alguna tabla ("degraded"). Los detalles técnicos (base,
+    versión, tablas faltantes y error del driver) solo se incluyen para el Administrador.
     """
 
-    authentication_classes = []
     permission_classes = [AllowAny]
 
     def get(self, request):
@@ -59,22 +69,23 @@ class DatabaseHealthView(APIView):
         except DatabaseError as exc:
             cause = exc.__cause__ or exc
             # En producción no se exponen detalles del driver/servidor.
-            detail = type(cause).__name__ if settings.IS_PRODUCTION else f"{type(cause).__name__}: {str(cause)[:300]}"
+            internals = can_see_internals(request)
+            detail = type(cause).__name__ if settings.IS_PRODUCTION or not internals else f"{type(cause).__name__}: {str(cause)[:300]}"
             return Response(
-                {"status": "error", "expected_tables": len(expected), "missing_tables": [], "error": detail},
+                {"status": "error", "expected_tables": len(expected), "missing_tables": [], "missing_count": 0,
+                 "error": detail if internals else "La base de datos no responde."},
                 status=503,
             )
 
         missing = [t for t in expected if t not in existing]
-        return Response(
-            {
-                "status": "degraded" if missing else "ok",
-                "database": db_name,
-                "server_version": version,
-                "server_time_utc": now_utc,
-                "latency_ms": latency_ms,
-                "expected_tables": len(expected),
-                "missing_tables": missing,
-            },
-            status=503 if missing else 200,
-        )
+        body = {
+            "status": "degraded" if missing else "ok",
+            "server_time_utc": now_utc,
+            "latency_ms": latency_ms,
+            "expected_tables": len(expected),
+            "missing_count": len(missing),
+            "missing_tables": [],
+        }
+        if can_see_internals(request):
+            body.update(database=db_name, server_version=version, missing_tables=missing)
+        return Response(body, status=503 if missing else 200)

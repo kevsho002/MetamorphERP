@@ -1,0 +1,175 @@
+/* ==========================================================================
+   Fase 27 — Historial de boletas por corte (sub-secciones + paginación), autocompletado de colaboradores y carga
+   diferida de la grilla IEX (estado inicial con filtros obligatorios y paginación de agentes).
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ boletas por corte */
+.slip-history {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.slip-history__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.slip-history__head .section-title {
+  margin: 0 0 2px;
+}
+
+.slip-history__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.field--inline {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field--inline select {
+  min-width: 96px;
+}
+
+.slip-cutoff {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.slip-cutoff[open] {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
+.slip-cutoff__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.slip-cutoff__summary::-webkit-details-marker {
+  display: none;
+}
+
+.slip-cutoff__summary:hover,
+.slip-cutoff__summary:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+}
+
+.slip-cutoff__summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.slip-cutoff__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.slip-cutoff__figures {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.slip-cutoff__body {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.slip-cutoff__body > p:first-child {
+  margin: var(--space-2) 0 0;
+}
+
+.daily-slip__pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .slip-cutoff__summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .slip-cutoff__figures {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}
+
+/* ------------------------------------------------------------------ autocompletado de colaboradores */
+.emp-picker__chosen {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-picker__actions {
+  display: inline-flex;
+  flex: none;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------------------ grilla IEX: carga diferida */
+.iex-empty {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  max-width: 720px;
+  margin: var(--space-4) auto;
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.iex-empty__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.iex-empty p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.iex-empty__units {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.iex-main .iex-pager,
+.iex__main > .iex-pager {
+  justify-content: space-between;
+  margin: 0 0 var(--space-2);
+}
+
+.iex-pager__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}

@@ -15,7 +15,7 @@ dado un valor de una herramienta a una fecha, se obtiene un único empleado, y v
 Integridad en SQL Server (migración 0002): FK a hcm.Employee, CHECK de fechas y un trigger que
 impide (a) que un mismo valor de un tipo identifique a dos registros en fechas que se cruzan y
 (b) dos IDs simultáneos del mismo tipo para un empleado cuando el tipo no lo permite.
-La vista dbo.vw_EmployeeGeneralId expone todo listo para JOINs.
+La vista hcm.vw_EmployeeGeneralId expone todo listo para JOINs.
 """
 
 import re
@@ -25,6 +25,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Q
 
+from apps.common.fields import sql_table
 from apps.hcm.models import Employee
 from apps.operations.models import Brand, Client
 
@@ -55,7 +56,7 @@ class SourceTool(models.Model):
     updated_at = models.DateTimeField("actualizada", auto_now=True)
 
     class Meta:
-        db_table = "gid_source_tool"
+        db_table = sql_table("hcm", "gid_source_tool")
         ordering = ["name"]
         verbose_name = "herramienta de origen"
         verbose_name_plural = "herramientas de origen"
@@ -113,7 +114,7 @@ class GeneralIdType(models.Model):
     brands = models.ManyToManyField(Brand, through="GeneralIdTypeBrand", related_name="general_id_types", blank=True)
 
     class Meta:
-        db_table = "gid_id_type"
+        db_table = sql_table("hcm", "gid_id_type")
         ordering = ["display_order", "name"]
         verbose_name = "tipo de General ID"
         verbose_name_plural = "tipos de General ID"
@@ -145,7 +146,7 @@ class GeneralIdTypeClient(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="general_id_scopes", verbose_name="cliente")
 
     class Meta:
-        db_table = "gid_id_type_client"
+        db_table = sql_table("hcm", "gid_id_type_client")
         verbose_name = "General ID que aplica al cliente"
         verbose_name_plural = "General IDs que aplican al cliente (y a todas sus marcas)"
         constraints = [models.UniqueConstraint(fields=["id_type", "client"], name="uq_gid_id_type_client")]
@@ -165,7 +166,7 @@ class GeneralIdTypeBrand(models.Model):
     brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name="general_id_scopes", verbose_name="marca")
 
     class Meta:
-        db_table = "gid_id_type_brand"
+        db_table = sql_table("hcm", "gid_id_type_brand")
         verbose_name = "General ID que aplica a la marca"
         verbose_name_plural = "General IDs que aplican a la marca"
         constraints = [models.UniqueConstraint(fields=["id_type", "brand"], name="uq_gid_id_type_brand")]
@@ -214,7 +215,7 @@ class EmployeeGeneralId(models.Model):
     objects = EmployeeGeneralIdQuerySet.as_manager()
 
     class Meta:
-        db_table = "gid_employee_general_id"
+        db_table = sql_table("hcm", "gid_employee_general_id")
         ordering = ["employee_id", "id_type__display_order", "effective_start"]
         verbose_name = "General ID del empleado"
         verbose_name_plural = "General IDs de empleados"

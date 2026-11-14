@@ -15,6 +15,9 @@ def _on_login(sender, request, user, **kwargs):
     if request is None:
         return
     sessions.start(request, user)
+    from apps.accounts import lockout
+
+    lockout.register_success(user)  # Fase 25: reinicia el contador de intentos fallidos
     via = "admin" if request.path.startswith("/admin/") else "web"
     record("login", Category.AUTH, f"Inicio de sesión ({via}).", request=request, actor=user, target=user, details={"via": via})
 
@@ -42,3 +45,6 @@ def _on_login_failed(sender, credentials, request=None, **kwargs):
         target_id=username[:64],
         success=False,
     )
+    from apps.accounts import lockout
+
+    lockout.register_failure(username, request=request)  # Fase 25: bloqueo tras N intentos fallidos

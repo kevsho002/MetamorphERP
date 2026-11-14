@@ -1,5 +1,5 @@
 """Esquema `fin`: Planillas y retenciones legales configurables (SQL-first, managed = False) y, desde la Fase 20,
-cálculo automático de planilla y control de boletas físicas (tablas `dbo.pay_*` administradas por Django)."""
+cálculo automático de planilla y control de boletas físicas (tablas `fin.pay_*` administradas por Django)."""
 
 from decimal import Decimal
 
@@ -231,7 +231,7 @@ class PayrollSetting(models.Model):
     updated_at = models.DateTimeField("actualizada", auto_now=True)
 
     class Meta:
-        db_table = "pay_setting"
+        db_table = sql_table("fin", "pay_setting")
         ordering = ["country_id", "-effective_start_date"]
         verbose_name = "parámetros salariales"
         verbose_name_plural = "parámetros salariales (por país y vigencia)"
@@ -290,7 +290,7 @@ class PayConcept(models.Model):
     description = models.CharField("descripción", max_length=300, blank=True)
 
     class Meta:
-        db_table = "pay_concept"
+        db_table = sql_table("fin", "pay_concept")
         ordering = ["display_order", "code"]
         verbose_name = "concepto de planilla"
         verbose_name_plural = "conceptos de planilla"
@@ -332,7 +332,7 @@ class PayrollRun(models.Model):
     preliminary_published_at = models.DateTimeField("boletas preliminares publicadas", null=True, blank=True)
 
     class Meta:
-        db_table = "pay_payroll_run"
+        db_table = sql_table("fin", "pay_payroll_run")
         ordering = ["-id"]
         verbose_name = "cálculo de planilla"
         verbose_name_plural = "cálculos de planilla"
@@ -377,7 +377,7 @@ class PayrollLine(models.Model):
     sort = models.PositiveSmallIntegerField("orden", default=100)
 
     class Meta:
-        db_table = "pay_payroll_line"
+        db_table = sql_table("fin", "pay_payroll_line")
         ordering = ["detail_id", "sort", "id"]
         verbose_name = "línea de boleta"
         verbose_name_plural = "líneas de boleta"
@@ -398,6 +398,67 @@ class PayrollLine(models.Model):
         return f"{self.code} {self.amount}"
 
 
+class PayrollDay(models.Model):
+    """Fase 25 — Boleta DIARIA: cada fecha de los cortes internos de asistencia con sus horas y su traducción exacta a
+    dinero. Los montos del día se reparten de las líneas por tiempo de la boleta (salario por horas, vacaciones,
+    nocturnidad, feriados y séptimo día) al centavo, de modo que la suma de los días es igual a esas líneas."""
+
+    class DayType(models.TextChoices):
+        WORKED = "WORKED", "Laborado"
+        PARTIAL = "PARTIAL", "Laborado parcial"
+        HOLIDAY = "HOLIDAY", "Feriado laborado"
+        VACATION = "VACATION", "Vacaciones"
+        ABSENCE = "ABSENCE", "Ausencia injustificada"
+        UNPAID = "UNPAID", "Programado sin pago"
+        REST = "REST", "Descanso"
+        SUSPENDED = "SUSPENDED", "Suspensión"
+        OUTSIDE = "OUTSIDE", "Fuera de la relación laboral"
+
+    id = models.BigAutoField(primary_key=True)
+    payroll = models.ForeignKey(Payroll, on_delete=models.DO_NOTHING, db_column="payroll_id", db_constraint=False,
+                                related_name="days", verbose_name="planilla")
+    detail = models.ForeignKey(PayrollDetail, on_delete=models.DO_NOTHING, db_column="payroll_detail_id", db_constraint=False,
+                               related_name="days", verbose_name="línea de planilla")
+    employee = _employee_fk("+")
+    work_date = models.DateField("fecha")
+    cutoff_code = models.CharField("corte de asistencia", max_length=40, blank=True)
+    day_type = models.CharField("tipo de día", max_length=10, choices=DayType)
+    holiday_name = models.CharField("feriado", max_length=120, blank=True)
+    scheduled_seconds = models.PositiveIntegerField("programado (s)", default=0)
+    worked_seconds = models.PositiveIntegerField("registrado (s)", default=0)
+    paid_seconds = models.PositiveIntegerField("pagable (s)", default=0)
+    night_seconds = models.PositiveIntegerField("nocturno (s)", default=0)
+    vacation_seconds = models.PositiveIntegerField("vacaciones (s)", default=0)
+    lateness_seconds = models.PositiveIntegerField("lateness (s)", default=0)
+    regular_amount = models.DecimalField("salario por horas", max_digits=12, decimal_places=2, default=0)
+    vacation_amount = models.DecimalField("vacaciones", max_digits=12, decimal_places=2, default=0)
+    night_amount = models.DecimalField("nocturnidad", max_digits=12, decimal_places=2, default=0)
+    holiday_amount = models.DecimalField("recargo de feriado", max_digits=12, decimal_places=2, default=0)
+    discount_amount = models.DecimalField("descuento (séptimo día)", max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField("total del día", max_digits=12, decimal_places=2, default=0)
+    notes = models.CharField("detalle", max_length=300, blank=True)
+
+    class Meta:
+        db_table = sql_table("fin", "pay_payroll_day")
+        ordering = ["detail_id", "work_date"]
+        verbose_name = "día de la boleta"
+        verbose_name_plural = "días de la boleta"
+        indexes = [models.Index(fields=["employee", "work_date"], name="ix_pay_day_employee_date")]
+        constraints = [
+            models.UniqueConstraint(fields=["detail", "work_date"], name="uq_pay_day_detail_date"),
+            models.CheckConstraint(condition=Q(day_type__in=["WORKED", "PARTIAL", "HOLIDAY", "VACATION", "ABSENCE", "UNPAID", "REST",
+                                                              "SUSPENDED", "OUTSIDE"]), name="ck_pay_day_type"),
+            models.CheckConstraint(condition=Q(discount_amount__lte=0) & Q(regular_amount__gte=0) & Q(vacation_amount__gte=0)
+                                   & Q(night_amount__gte=0) & Q(holiday_amount__gte=0), name="ck_pay_day_sign"),
+            models.CheckConstraint(
+                condition=Q(total_amount=models.F("regular_amount") + models.F("vacation_amount") + models.F("night_amount")
+                            + models.F("holiday_amount") + models.F("discount_amount")), name="ck_pay_day_total"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee_id} · {self.work_date} · {self.total_amount}"
+
+
 class PayslipBatch(models.Model):
     """Lote físico de boletas de un periodo (quincena / mes) y departamento (centro de costos)."""
 
@@ -412,7 +473,7 @@ class PayslipBatch(models.Model):
     created_at = models.DateTimeField("generado", auto_now_add=True)
 
     class Meta:
-        db_table = "pay_payslip_batch"
+        db_table = sql_table("fin", "pay_payslip_batch")
         ordering = ["payroll_id", "code"]
         verbose_name = "lote de boletas"
         verbose_name_plural = "lotes de boletas (por periodo y departamento)"
@@ -463,7 +524,7 @@ class Payslip(models.Model):
     notes = models.CharField("observaciones", max_length=300, blank=True)
 
     class Meta:
-        db_table = "pay_payslip"
+        db_table = sql_table("fin", "pay_payslip")
         ordering = ["payroll_id", "folio"]
         verbose_name = "boleta de pago"
         verbose_name_plural = "boletas de pago (inventario físico)"
@@ -496,7 +557,7 @@ class PayrollAccountRule(models.Model):
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
 
     class Meta:
-        db_table = "pay_account_rule"
+        db_table = sql_table("fin", "pay_account_rule")
         verbose_name = "regla de planilla por cuenta"
         verbose_name_plural = "reglas de planilla por cuenta"
 
@@ -526,7 +587,7 @@ class PayrollIteration(models.Model):
     open_exceptions = models.PositiveIntegerField("excepciones abiertas", default=0)
 
     class Meta:
-        db_table = "pay_payroll_iteration"
+        db_table = sql_table("fin", "pay_payroll_iteration")
         ordering = ["run_id", "-number"]
         verbose_name = "corrida preliminar"
         verbose_name_plural = "corridas preliminares"
@@ -565,7 +626,7 @@ class PayrollException(models.Model):
     resolved_at = models.DateTimeField("resuelta", null=True, blank=True)
 
     class Meta:
-        db_table = "pay_payroll_exception"
+        db_table = sql_table("fin", "pay_payroll_exception")
         ordering = ["-created_at", "-id"]
         verbose_name = "excepción de planilla"
         verbose_name_plural = "excepciones de planilla (reportadas por los agentes)"
@@ -603,7 +664,7 @@ class SettlementBatch(models.Model):
     paid_at = models.DateTimeField("pagado", null=True, blank=True)
 
     class Meta:
-        db_table = "pay_settlement_batch"
+        db_table = sql_table("fin", "pay_settlement_batch")
         ordering = ["-payment_date", "-id"]
         verbose_name = "lote de pago de liquidaciones"
         verbose_name_plural = "lotes de pago de liquidaciones"
@@ -657,7 +718,7 @@ class Settlement(models.Model):
     paid_at = models.DateTimeField("pagada", null=True, blank=True)
 
     class Meta:
-        db_table = "pay_settlement"
+        db_table = sql_table("fin", "pay_settlement")
         ordering = ["-created_at", "-id"]
         verbose_name = "liquidación"
         verbose_name_plural = "liquidaciones e indemnizaciones"
@@ -698,7 +759,7 @@ class SettlementLine(models.Model):
     sort = models.PositiveSmallIntegerField("orden", default=100)
 
     class Meta:
-        db_table = "pay_settlement_line"
+        db_table = sql_table("fin", "pay_settlement_line")
         ordering = ["settlement_id", "sort", "id"]
         verbose_name = "línea de liquidación"
         verbose_name_plural = "líneas de liquidación"

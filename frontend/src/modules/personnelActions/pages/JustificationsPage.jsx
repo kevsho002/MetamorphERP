@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext.jsx";
 import { useTimeFormat } from "../../../app/timeFormat.js";
 import { adhApi } from "../../wfm/api.js";
+import EmployeeAutocomplete from "../../../components/ui/EmployeeAutocomplete.jsx";
 
 const fmt = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)} ${iso.slice(11, 19)}` : "—");
 const seconds = (x) => Math.max(0, (new Date(x.end) - new Date(x.start)) / 1000);
@@ -60,10 +61,11 @@ export default function JustificationsPage() {
         )}
       </header>
       <div className="filters" role="search">
-        <label className="field">
-          <span className="field__label">Agente (ID)</span>
-          <input type="search" defaultValue={filters.employee} onKeyDown={(e) => e.key === "Enter" && update({ employee: e.currentTarget.value.trim().toUpperCase() })} />
-        </label>
+        <div className="field">
+          <label className="field__label" htmlFor="just-employee">Agente</label>
+          <EmployeeAutocomplete inputId="just-employee" value={filters.employee} onChange={(code) => update({ employee: code })}
+            placeholder="Nombre o ID del agente…" />
+        </div>
         <label className="field">
           <span className="field__label">Desde</span>
           <input type="date" value={filters.from} onChange={(e) => update({ from: e.target.value })} />

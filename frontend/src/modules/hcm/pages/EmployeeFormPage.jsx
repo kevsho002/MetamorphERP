@@ -19,6 +19,7 @@ import {
   withDefaults,
 } from "../lib/formSpec.js";
 import { formatDateTime, todayIso } from "../lib/format.js";
+import FieldHint from "../../../components/ui/FieldHint.jsx";
 
 const FIXED_LABELS = {
   country: "País",
@@ -417,7 +418,7 @@ function EmployeeForm({ code }) {
                 {visibleError("hire_date") || serverErrors.hire_date}
               </small>
             ) : (
-              <small className="field__hint">Define qué versión de la plantilla del país aplica.</small>
+              <FieldHint>Define qué versión de la plantilla del país aplica.</FieldHint>
             )}
           </div>
           {isEdit && (
